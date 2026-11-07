@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
 import '../../domain/entities/post.dart';
+import '../../domain/entities/feed_page.dart' as feed_models;
 import '../widgets/feed_loading_skeleton.dart';
 import '../widgets/post_card.dart';
 
@@ -284,7 +285,7 @@ class _FeedSourceErrors extends StatelessWidget {
     required this.onRetry,
   });
 
-  final List<FeedSourceFailure> failures;
+  final List<feed_models.FeedSourceFailure> failures;
   final Future<void> Function() onRetry;
 
   @override
