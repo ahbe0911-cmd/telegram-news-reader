@@ -13,6 +13,7 @@ final class PostAttachment {
     this.mimeType,
     this.fileName,
     this.thumbnailUrl,
+    this.telegramFileId,
   });
 
   final String url;
@@ -20,6 +21,9 @@ final class PostAttachment {
   final String? mimeType;
   final String? fileName;
   final String? thumbnailUrl;
+
+  /// Native TDLib file identifier; null for ordinary HTTP attachments.
+  final int? telegramFileId;
 }
 
 final class Post {

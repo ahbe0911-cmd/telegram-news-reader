@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
+import '../../../telegram/telegram_providers.dart';
 import '../../domain/entities/telegram_channel.dart';
 
 class ChannelsPage extends ConsumerWidget {
@@ -16,7 +17,12 @@ class ChannelsPage extends ConsumerWidget {
         title: const Text('کانال‌های من'),
         actions: [
           IconButton(
-            tooltip: 'افزودن کانال',
+            tooltip: 'همگام‌سازی کانال‌های حساب تلگرام',
+            onPressed: () => _syncAccountChannels(context, ref),
+            icon: const Icon(Icons.sync_rounded),
+          ),
+          IconButton(
+            tooltip: 'افزودن کانال عمومی',
             onPressed: () => _showAddChannelDialog(context, ref),
             icon: const Icon(Icons.add_circle_outline_rounded),
           ),
@@ -155,9 +161,25 @@ class ChannelsPage extends ConsumerWidget {
             FilledButton(
               onPressed: () async {
                 try {
+                  final resolved = await ref
+                      .read(telegramTdlibServiceProvider)
+                      .resolvePublicChannel(usernameController.text);
+                  final resolvedId = (resolved['id'] as num?)?.toInt();
+                  if (resolvedId == null) {
+                    throw StateError('تلگرام برای این آیدی کانالی پیدا نکرد.');
+                  }
+                  final resolvedUsername = _publicUsername(resolved) ??
+                      usernameController.text.trim().replaceFirst(
+                            RegExp(r'^@'),
+                            '',
+                          );
+                  final resolvedTitle = titleController.text.trim().isNotEmpty
+                      ? titleController.text.trim()
+                      : resolved['title']?.toString();
                   final channel = TelegramChannel(
-                    username: usernameController.text,
-                    title: titleController.text,
+                    username: resolvedUsername,
+                    title: resolvedTitle,
+                    chatId: resolvedId,
                   );
                   final repository =
                       await ref.read(channelRepositoryProvider.future);
@@ -172,7 +194,7 @@ class ChannelsPage extends ConsumerWidget {
                   setDialogState(() {
                     errorText = error is ArgumentError
                         ? 'آیدی کانال باید بین ۵ تا ۳۲ حرف، عدد یا زیرخط باشد.'
-                        : 'ذخیره کانال انجام نشد: $error';
+                        : 'کانال پیدا نشد یا دسترسی به آن ممکن نیست: $error';
                   });
                 }
               },
@@ -185,6 +207,71 @@ class ChannelsPage extends ConsumerWidget {
 
     usernameController.dispose();
     titleController.dispose();
+  }
+
+  String? _publicUsername(Map<String, dynamic> chat) {
+    final direct = chat['username']?.toString();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final usernames = chat['usernames'];
+    if (usernames is Map) {
+      final active = usernames['active_usernames'];
+      if (active is List && active.isNotEmpty) {
+        return active.first.toString();
+      }
+    }
+    return null;
+  }
+
+  Future<void> _syncAccountChannels(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      final service = ref.read(telegramTdlibServiceProvider);
+      final response = await service.getChats(limit: 200);
+      final ids = response['chat_ids'];
+      if (ids is! List) {
+        throw StateError('فهرست گفتگوهای تلگرام دریافت نشد.');
+      }
+
+      final repository = await ref.read(channelRepositoryProvider.future);
+      var added = 0;
+
+      for (final rawId in ids) {
+        if (rawId is! num) continue;
+        final chat = await service.getChat(rawId.toInt());
+        final type = chat['type'];
+        if (type is! Map ||
+            type['@type'] != 'chatTypeSupergroup' ||
+            type['is_channel'] != true) {
+          continue;
+        }
+
+        final chatId = (chat['id'] as num?)?.toInt();
+        if (chatId == null) continue;
+
+        final username = _publicUsername(chat) ?? 'chat_${chatId.abs()}';
+        final title = chat['title']?.toString() ?? 'کانال تلگرام';
+        await repository.upsert(TelegramChannel(
+          username: username,
+          title: title,
+          chatId: chatId,
+        ));
+        added++;
+      }
+
+      ref.invalidate(feedPageProvider());
+      if (!context.mounted) return;
+      _showMessage(
+        context,
+        added == 0
+            ? 'کانال قابل‌دسترسی در فهرست گفتگوها پیدا نشد.'
+            : '$added کانال از حساب تلگرام همگام‌سازی شد.',
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      _showMessage(context, 'همگام‌سازی کانال‌ها ناموفق بود: $error');
+    }
   }
 
   void _showMessage(BuildContext context, String message) {

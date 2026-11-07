@@ -3,12 +3,12 @@ import '../../../channels/domain/entities/telegram_channel.dart';
 import '../../domain/entities/feed_page.dart';
 import '../../domain/entities/post.dart';
 import '../../domain/repositories/feed_repository.dart';
-import '../datasources/telegram_rss_remote_data_source.dart';
+import '../datasources/telegram_tdlib_remote_data_source.dart';
 
 final class FeedRepositoryImpl implements FeedRepository {
   FeedRepositoryImpl({required this._remoteDataSource});
 
-  final TelegramRssRemoteDataSource _remoteDataSource;
+  final TelegramTdlibRemoteDataSource _remoteDataSource;
 
   List<Post> _cachedPosts = const [];
   List<FeedSourceFailure> _lastFailures = const [];

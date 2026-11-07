@@ -13,6 +13,8 @@ class TelegramChannelRecord {
 
   late String title;
 
+  int? chatId;
+
   bool enabled = true;
 
   late DateTime createdAt;
@@ -21,6 +23,7 @@ class TelegramChannelRecord {
     return TelegramChannelRecord()
       ..username = channel.username
       ..title = channel.title
+      ..chatId = channel.chatId
       ..enabled = channel.enabled
       ..createdAt = channel.createdAt;
   }
@@ -29,6 +32,7 @@ class TelegramChannelRecord {
     return TelegramChannel(
       username: username,
       title: title,
+      chatId: chatId,
       enabled: enabled,
       createdAt: createdAt,
     );

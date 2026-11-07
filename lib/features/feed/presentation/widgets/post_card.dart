@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../telegram/telegram_providers.dart';
 import '../../../media/presentation/pages/image_viewer_page.dart';
 import '../../../media/presentation/pages/pdf_viewer_page.dart';
+import '../../../media/presentation/pages/video_player_page.dart';
 import '../../../media/presentation/widgets/inline_video_player.dart';
 import '../../domain/entities/post.dart';
 
@@ -32,10 +35,12 @@ class PostCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final nonVideoAttachments = post.attachments
-        .where((attachment) => attachment.type != PostAttachmentType.video)
+        .where((attachment) => attachment.type != PostAttachmentType.video ||
+            attachment.telegramFileId != null)
         .toList(growable: false);
     final videoAttachments = post.attachments
-        .where((attachment) => attachment.type == PostAttachmentType.video)
+        .where((attachment) => attachment.type == PostAttachmentType.video &&
+            attachment.telegramFileId == null)
         .toList(growable: false);
 
     return Card(
@@ -69,7 +74,9 @@ class PostCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '@${post.channelUsername}',
+                        post.channelUsername.startsWith('chat_')
+                            ? 'کانال خصوصی'
+                            : '@${post.channelUsername}',
                         textDirection: TextDirection.ltr,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colors.onSurfaceVariant,
@@ -186,7 +193,7 @@ class PostCard extends StatelessWidget {
   }
 }
 
-class _AttachmentPreview extends StatelessWidget {
+class _AttachmentPreview extends ConsumerStatefulWidget {
   const _AttachmentPreview({
     required this.attachment,
     this.localPath,
@@ -195,38 +202,140 @@ class _AttachmentPreview extends StatelessWidget {
   final PostAttachment attachment;
   final String? localPath;
 
+  @override
+  ConsumerState<_AttachmentPreview> createState() => _AttachmentPreviewState();
+}
+
+class _AttachmentPreviewState extends ConsumerState<_AttachmentPreview> {
+  bool _downloading = false;
+  String? _downloadError;
+
   bool get _isPdf =>
-      attachment.mimeType?.toLowerCase().contains('pdf') == true ||
-      attachment.fileName?.toLowerCase().endsWith('.pdf') == true ||
-      Uri.tryParse(attachment.url)?.path.toLowerCase().endsWith('.pdf') == true;
+      widget.attachment.mimeType?.toLowerCase().contains('pdf') == true ||
+      widget.attachment.fileName?.toLowerCase().endsWith('.pdf') == true ||
+      Uri.tryParse(widget.attachment.url)?.path.toLowerCase().endsWith('.pdf') == true;
+
+  Future<void> _open() async {
+    if (widget.localPath != null) {
+      await _openLocal(widget.localPath!);
+      return;
+    }
+
+    final fileId = widget.attachment.telegramFileId;
+    if (fileId == null) {
+      await _openRemote();
+      return;
+    }
+
+    setState(() {
+      _downloading = true;
+      _downloadError = null;
+    });
+
+    try {
+      final file = await ref.read(telegramTdlibServiceProvider).downloadFile(fileId);
+      final local = file['local'] is Map
+          ? Map<String, dynamic>.from(file['local'] as Map)
+          : const <String, dynamic>{};
+      final path = local['path']?.toString();
+      if (path == null || path.isEmpty || !await File(path).exists()) {
+        throw StateError('فایل از تلگرام دریافت نشد یا مسیر محلی آن خالی است.');
+      }
+      if (!mounted) return;
+      await _openLocal(path);
+    } catch (error) {
+      if (mounted) setState(() => _downloadError = error.toString());
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  Future<void> _openLocal(String path) async {
+    final attachment = widget.attachment;
+    if (attachment.type == PostAttachmentType.image) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ImageViewerPage(url: '', localPath: path),
+        ),
+      );
+      return;
+    }
+    if (attachment.type == PostAttachmentType.video) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => VideoPlayerPage(url: '', localPath: path),
+        ),
+      );
+      return;
+    }
+    if (attachment.type == PostAttachmentType.document && _isPdf) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PdfViewerPage(
+            url: '',
+            localPath: path,
+            fileName: attachment.fileName,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فایل ذخیره شد: ${attachment.fileName ?? path}')),
+      );
+    }
+  }
+
+  Future<void> _openRemote() async {
+    final attachment = widget.attachment;
+    if (attachment.type == PostAttachmentType.image) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ImageViewerPage(url: attachment.url),
+        ),
+      );
+      return;
+    }
+    if (_isPdf) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PdfViewerPage(
+            url: attachment.url,
+            fileName: attachment.fileName,
+          ),
+        ),
+      );
+      return;
+    }
+    await launchUrl(
+      Uri.parse(attachment.url),
+      mode: LaunchMode.externalApplication,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final attachment = widget.attachment;
 
-    if (attachment.type == PostAttachmentType.image) {
+    if (attachment.type == PostAttachmentType.image &&
+        attachment.telegramFileId == null) {
       return InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ImageViewerPage(
-              url: attachment.url,
-              localPath: localPath,
-            ),
-          ),
-        ),
+        onTap: _open,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: SizedBox(
             width: 142,
             height: 118,
-            child: localPath != null
+            child: widget.localPath != null
                 ? Image.file(
-                    File(localPath!),
+                    File(widget.localPath!),
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                    ),
+                    errorBuilder: (_, _, _) =>
+                        const Icon(Icons.broken_image_outlined),
                   )
                 : CachedNetworkImage(
                     imageUrl: attachment.url,
@@ -248,52 +357,53 @@ class _AttachmentPreview extends StatelessWidget {
     }
 
     final icon = switch (attachment.type) {
+      PostAttachmentType.image => Icons.image_outlined,
+      PostAttachmentType.video => Icons.play_circle_outline_rounded,
       PostAttachmentType.audio => Icons.audiotrack_rounded,
       PostAttachmentType.document => Icons.description_outlined,
-      _ => Icons.attach_file_rounded,
+      PostAttachmentType.unknown => Icons.attach_file_rounded,
     };
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () async {
-        if (_isPdf) {
-          await Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => PdfViewerPage(
-                url: attachment.url,
-                localPath: localPath,
-                fileName: attachment.fileName,
-              ),
-            ),
-          );
-          return;
-        }
-
-        await launchUrl(
-          Uri.parse(attachment.url),
-          mode: LaunchMode.externalApplication,
-        );
-      },
+      onTap: _downloading ? null : _open,
       child: Container(
         width: 142,
-        height: 76,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 82,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: colors.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Row(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: colors.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                attachment.fileName ?? 'فایل پیوست',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
+            if (_downloading)
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(icon, color: colors.primary, size: 24),
+            const SizedBox(height: 6),
+            Text(
+              _downloading
+                  ? 'دریافت از تلگرام…'
+                  : attachment.fileName ?? 'باز کردن پیوست',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
             ),
+            if (_downloadError != null)
+              Text(
+                'خطا؛ دوباره لمس کن',
+                maxLines: 1,
+                style: TextStyle(
+                  color: colors.error,
+                  fontSize: 10,
+                ),
+              ),
           ],
         ),
       ),

@@ -13,8 +13,9 @@ import '../../features/channels/data/models/telegram_channel_record.dart';
 import '../../features/channels/data/repositories/channel_repository_impl.dart';
 import '../../features/channels/domain/entities/telegram_channel.dart';
 import '../../features/channels/domain/repositories/channel_repository.dart';
-import '../../features/feed/data/datasources/telegram_rss_remote_data_source.dart';
-import '../../features/feed/data/parsers/telegram_rss_parser.dart';
+import '../../features/feed/data/datasources/telegram_tdlib_remote_data_source.dart';
+import '../../features/telegram/data/telegram_tdlib_service.dart';
+import '../../features/telegram/telegram_providers.dart';
 import '../../features/feed/data/repositories/feed_repository_impl.dart';
 import '../../features/feed/domain/entities/feed_page.dart';
 import '../../features/feed/domain/entities/post.dart';
@@ -43,23 +44,16 @@ Dio dioClient(Ref ref) {
 }
 
 @Riverpod(keepAlive: true)
-TelegramRssParser telegramRssParser(Ref ref) {
-  return TelegramRssParser();
-}
-
-@Riverpod(keepAlive: true)
-TelegramRssRemoteDataSource telegramRssRemoteDataSource(Ref ref) {
-  return TelegramRssRemoteDataSource(
-    dio: ref.watch(dioClientProvider),
-    parser: ref.watch(telegramRssParserProvider),
-    baseUrl: AppConfig.rssHubBaseUrl,
+TelegramTdlibRemoteDataSource telegramTdlibRemoteDataSource(Ref ref) {
+  return TelegramTdlibRemoteDataSource(
+    telegram: ref.watch(telegramTdlibServiceProvider),
   );
 }
 
 @Riverpod(keepAlive: true)
 FeedRepository feedRepository(Ref ref) {
   return FeedRepositoryImpl(
-    remoteDataSource: ref.watch(telegramRssRemoteDataSourceProvider),
+    remoteDataSource: ref.watch(telegramTdlibRemoteDataSourceProvider),
   );
 }
 
