@@ -35,6 +35,22 @@ flutter test
 Telegram messages are retrieved through the signed-in user's TDLib session. Private channels are available only when the account is already a member and the chat is present in the account's Telegram chat list.
 
 
+## Persian typography
+
+The app bundles the open-source Vazir font locally. Before building on a
+development machine, run:
+
+```bash
+bash tool/prepare_fonts.sh
+flutter pub get
+flutter run
+```
+
+The GitHub Actions workflow runs this preparation automatically. It downloads
+a pinned font revision, verifies its Git blob SHA, and includes the SIL Open
+Font License in the app assets. The font is bundled in the APK and is available
+offline at runtime.
+
 ## Direct Telegram connection (MTProto / TDLib)
 
 The Android app uses the community-maintained `handy_tdlib_next` Flutter binding to the native TDLib JSON interface. On first launch, enter your API ID and API Hash from https://my.telegram.org, then complete Telegram's phone/code/2-step verification flow.
