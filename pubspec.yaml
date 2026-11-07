@@ -50,6 +50,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/OFL-Vazir.txt
   fonts:
     - family: Vazir
       fonts:
