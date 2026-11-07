@@ -39,7 +39,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
       _endReached = false;
       _loadMoreError = null;
     });
-    await ref.refresh(feedPageProvider().future);
+    await ref.refresh(feedPageProvider().future).then((_) {});
   }
 
   Future<void> _loadMore(int offset) async {
