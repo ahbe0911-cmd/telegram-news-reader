@@ -52,6 +52,9 @@ jobs:
             sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
           fi
 
+      - name: Prepare bundled Persian font
+        run: bash tool/prepare_fonts.sh
+
       - name: Install dependencies
         run: flutter pub get
 

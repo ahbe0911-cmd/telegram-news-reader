@@ -50,3 +50,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Vazir
+      fonts:
+        - asset: assets/fonts/Vazir-Regular.ttf
+          weight: 400

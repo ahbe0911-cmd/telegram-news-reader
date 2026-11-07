@@ -440,10 +440,17 @@ class _ConnectingPage extends StatelessWidget {
                 'در حال اتصال امن به تلگرام…',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
-              if (message != null) ...[
-                const SizedBox(height: 10),
-                Text(message!, textAlign: TextAlign.center),
-              ],
+              const SizedBox(height: 10),
+              Text(
+                message ?? 'در حال آماده‌سازی ارتباط امن…',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'اگر اتصال برقرار نشود، پیام خطا و امکان تلاش دوباره نمایش داده می‌شود.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),

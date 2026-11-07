@@ -15,6 +15,8 @@ abstract final class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: _background,
+      fontFamily: 'Vazir',
+      fontFamilyFallback: const ['sans-serif'],
       appBarTheme: const AppBarTheme(
         backgroundColor: _background,
         foregroundColor: Color(0xFF18323B),
@@ -22,6 +24,7 @@ abstract final class AppTheme {
         centerTitle: false,
         titleTextStyle: TextStyle(
           color: Color(0xFF18323B),
+          fontFamily: 'Vazir',
           fontSize: 20,
           fontWeight: FontWeight.w800,
         ),

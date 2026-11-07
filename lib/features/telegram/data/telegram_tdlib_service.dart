@@ -70,6 +70,8 @@ class TelegramTdlibService {
   String? _apiHash;
   String? _databaseEncryptionKey;
   bool _restoreStarted = false;
+  bool _tdlibParametersSent = false;
+  bool _databaseKeySent = false;
   bool _disposed = false;
 
   TelegramAuthStatus get status => _status;
@@ -79,11 +81,18 @@ class TelegramTdlibService {
   Future<void> restore() async {
     if (_restoreStarted || _disposed) return;
     _restoreStarted = true;
-    _emit(const TelegramAuthStatus(TelegramAuthStage.checking));
+    _emit(const TelegramAuthStatus(
+      TelegramAuthStage.checking,
+      message: 'در حال بررسی اطلاعات ورود ذخیره‌شده…',
+    ));
 
     try {
-      final id = await _storage.read(key: _apiIdKey);
-      final hash = await _storage.read(key: _apiHashKey);
+      final id = await _storage
+          .read(key: _apiIdKey)
+          .timeout(const Duration(seconds: 15));
+      final hash = await _storage
+          .read(key: _apiHashKey)
+          .timeout(const Duration(seconds: 15));
       if (id == null || hash == null || id.isEmpty || hash.isEmpty) {
         _emit(const TelegramAuthStatus(
           TelegramAuthStage.needsApiCredentials,
@@ -102,13 +111,17 @@ class TelegramTdlibService {
 
       _apiId = parsedId;
       _apiHash = hash;
-      await _ensureDatabaseKey();
+      await _ensureDatabaseKey().timeout(const Duration(seconds: 15));
       await _startWorker();
     } catch (error) {
-      _emit(TelegramAuthStatus(
-        TelegramAuthStage.error,
-        message: 'بازیابی تنظیمات اتصال تلگرام ناموفق بود: $error',
-      ));
+      if (_status.stage != TelegramAuthStage.error) {
+        _emit(TelegramAuthStatus(
+          TelegramAuthStage.error,
+          message: error is TimeoutException
+              ? 'مهلت بازیابی اتصال تلگرام تمام شد. اتصال اینترنت و تنظیمات ورود را بررسی کن.'
+              : 'بازیابی تنظیمات اتصال تلگرام ناموفق بود: $error',
+        ));
+      }
     }
   }
 
@@ -124,12 +137,16 @@ class TelegramTdlibService {
       throw ArgumentError('API Hash باید یک کد ۳۲ کاراکتری معتبر باشد.');
     }
 
-    await _storage.write(key: _apiIdKey, value: apiId.toString());
-    await _storage.write(key: _apiHashKey, value: normalizedHash);
+    await _storage
+        .write(key: _apiIdKey, value: apiId.toString())
+        .timeout(const Duration(seconds: 15));
+    await _storage
+        .write(key: _apiHashKey, value: normalizedHash)
+        .timeout(const Duration(seconds: 15));
     _apiId = apiId;
     _apiHash = normalizedHash;
     _restoreStarted = true;
-    await _ensureDatabaseKey();
+    await _ensureDatabaseKey().timeout(const Duration(seconds: 15));
     await _stopWorker();
     await _startWorker();
   }
@@ -290,46 +307,94 @@ class TelegramTdlibService {
       return;
     }
 
-    _emit(const TelegramAuthStatus(TelegramAuthStage.initializing));
-    final supportDirectory = await getApplicationSupportDirectory();
-    final databaseDirectory =
-        Directory('${supportDirectory.path}/telegram_database');
-    final filesDirectory = Directory('${supportDirectory.path}/telegram_files');
-    await databaseDirectory.create(recursive: true);
-    await filesDirectory.create(recursive: true);
-
-    _workerReady = Completer<void>();
-    _workerReceivePort = ReceivePort();
-    _workerSubscription = _workerReceivePort!.listen(_handleWorkerMessage);
-
-    _worker = await Isolate.spawn<Map<String, dynamic>>(
-      _tdlibWorkerMain,
-      {
-        'mainPort': _workerReceivePort!.sendPort,
-        'apiId': apiId,
-        'apiHash': apiHash,
-        'databaseKey': databaseKey,
-        'databaseDirectory': databaseDirectory.path,
-        'filesDirectory': filesDirectory.path,
-      },
-      onError: _workerReceivePort!.sendPort,
-      onExit: _workerReceivePort!.sendPort,
-      debugName: 'Telegram TDLib worker',
-    );
+    _emit(const TelegramAuthStatus(
+      TelegramAuthStage.initializing,
+      message: 'در حال آماده‌سازی موتور تلگرام…',
+    ));
+    _tdlibParametersSent = false;
+    _databaseKeySent = false;
 
     try {
+      final supportDirectory = await getApplicationSupportDirectory()
+          .timeout(const Duration(seconds: 15));
+      final databaseDirectory =
+          Directory('${supportDirectory.path}/telegram_database');
+      final filesDirectory =
+          Directory('${supportDirectory.path}/telegram_files');
+      await databaseDirectory.create(recursive: true);
+      await filesDirectory.create(recursive: true);
+
+      _workerReady = Completer<void>();
+      _workerReceivePort = ReceivePort();
+      _workerSubscription = _workerReceivePort!.listen(_handleWorkerMessage);
+
+      _worker = await Isolate.spawn<Map<String, dynamic>>(
+        _tdlibWorkerMain,
+        {
+          'mainPort': _workerReceivePort!.sendPort,
+          'apiId': apiId,
+          'apiHash': apiHash,
+          'databaseKey': databaseKey,
+          'databaseDirectory': databaseDirectory.path,
+          'filesDirectory': filesDirectory.path,
+        },
+        onError: _workerReceivePort!.sendPort,
+        onExit: _workerReceivePort!.sendPort,
+        debugName: 'Telegram TDLib worker',
+      ).timeout(const Duration(seconds: 15));
+
       await _workerReady!.future.timeout(const Duration(seconds: 30));
-    } on TimeoutException {
+
       _emit(const TelegramAuthStatus(
-        TelegramAuthStage.error,
-        message: 'راه‌اندازی موتور تلگرام بیش از حد طول کشید.',
+        TelegramAuthStage.initializing,
+        message: 'موتور تلگرام آماده شد؛ در حال بررسی وضعیت نشست…',
       ));
+
+      // TDLib normally pushes updateAuthorizationState after client creation.
+      // Querying it as well prevents a silent loading screen if that first
+      // update was missed during isolate startup.
+      final authorization = await _request(
+        'getAuthorizationState',
+        const {},
+        timeout: const Duration(seconds: 15),
+      );
+      final stateName = authorization['@type']?.toString();
+      if (stateName == null || !stateName.startsWith('authorizationState')) {
+        throw StateError(
+          'پاسخ وضعیت ورود از تلگرام معتبر نبود: ${authorization['@type']}',
+        );
+      }
+      _handleAuthorizationState(stateName);
+    } on TimeoutException catch (error) {
       await _stopWorker();
+      _emit(TelegramAuthStatus(
+        TelegramAuthStage.error,
+        message: 'تلگرام در زمان مجاز پاسخ نداد. اینترنت یا دسترسی شبکه را بررسی کن. ($error)',
+      ));
+      rethrow;
+    } catch (error) {
+      await _stopWorker();
+      _emit(TelegramAuthStatus(
+        TelegramAuthStage.error,
+        message: 'راه‌اندازی موتور تلگرام ناموفق بود: $error',
+      ));
       rethrow;
     }
   }
 
   void _handleWorkerMessage(dynamic message) {
+    if (message == null) {
+      if (!_disposed &&
+          _worker != null &&
+          _status.stage != TelegramAuthStage.error &&
+          _status.stage != TelegramAuthStage.closed) {
+        _emit(const TelegramAuthStatus(
+          TelegramAuthStage.error,
+          message: 'پردازش پس‌زمینه تلگرام متوقف شد. برای اتصال دوباره تلاش کن.',
+        ));
+      }
+      return;
+    }
     if (message is List && message.isNotEmpty) {
       _emit(TelegramAuthStatus(
         TelegramAuthStage.error,
@@ -382,18 +447,32 @@ class TelegramTdlibService {
   void _handleAuthorizationState(String stateName) {
     switch (stateName) {
       case 'authorizationStateWaitTdlibParameters':
-        unawaited(_sendTdlibParameters());
+        if (!_tdlibParametersSent) {
+          _tdlibParametersSent = true;
+          _emit(const TelegramAuthStatus(
+            TelegramAuthStage.initializing,
+            message: 'در حال ارسال تنظیمات امن به تلگرام…',
+          ));
+          unawaited(_sendTdlibParameters());
+        }
         break;
       case 'authorizationStateWaitEncryptionKey':
-        unawaited(_request('checkDatabaseEncryptionKey', {
-          'encryption_key': _databaseEncryptionKey ?? '',
-        }).catchError((Object error) {
-          _emit(TelegramAuthStatus(
-            TelegramAuthStage.error,
-            message: 'بازکردن پایگاه داده تلگرام ناموفق بود: $error',
+        if (!_databaseKeySent) {
+          _databaseKeySent = true;
+          _emit(const TelegramAuthStatus(
+            TelegramAuthStage.initializing,
+            message: 'در حال بازکردن پایگاه داده رمزگذاری‌شده…',
           ));
-          return <String, dynamic>{};
-        }));
+          unawaited(_request('checkDatabaseEncryptionKey', {
+            'encryption_key': _databaseEncryptionKey ?? '',
+          }).catchError((Object error) {
+            _emit(TelegramAuthStatus(
+              TelegramAuthStage.error,
+              message: 'بازکردن پایگاه داده تلگرام ناموفق بود: $error',
+            ));
+            return <String, dynamic>{};
+          }));
+        }
         break;
       case 'authorizationStateWaitPhoneNumber':
         _emit(const TelegramAuthStatus(TelegramAuthStage.waitingForPhone));
@@ -454,10 +533,12 @@ class TelegramTdlibService {
 
   Future<void> _sendTdlibParameters() async {
     try {
+      final supportDirectory = await getApplicationSupportDirectory()
+          .timeout(const Duration(seconds: 15));
       await _request('setTdlibParameters', {
         'use_test_dc': false,
-        'database_directory': '${(await getApplicationSupportDirectory()).path}/telegram_database',
-        'files_directory': '${(await getApplicationSupportDirectory()).path}/telegram_files',
+        'database_directory': '${supportDirectory.path}/telegram_database',
+        'files_directory': '${supportDirectory.path}/telegram_files',
         'database_encryption_key': _databaseEncryptionKey,
         'use_file_database': true,
         'use_chat_info_database': true,
@@ -468,12 +549,33 @@ class TelegramTdlibService {
         'system_language_code': 'fa',
         'device_model': 'Android',
         'system_version': '',
-        'application_version': '1.1.0',
-      });
+        'application_version': '1.2.0',
+        'enable_storage_optimizer': true,
+        'ignore_file_names': false,
+      }, timeout: const Duration(seconds: 45));
+
+      _emit(const TelegramAuthStatus(
+        TelegramAuthStage.initializing,
+        message: 'تنظیمات ثبت شد؛ در حال برقراری ارتباط با تلگرام…',
+      ));
+
+      // Read the state once more in case the corresponding update arrived
+      // before the request response was processed.
+      final authorization = await _request(
+        'getAuthorizationState',
+        const {},
+        timeout: const Duration(seconds: 15),
+      );
+      final stateName = authorization['@type']?.toString();
+      if (stateName != null &&
+          stateName.startsWith('authorizationState') &&
+          stateName != 'authorizationStateWaitTdlibParameters') {
+        _handleAuthorizationState(stateName);
+      }
     } catch (error) {
       _emit(TelegramAuthStatus(
         TelegramAuthStage.error,
-        message: 'تنظیمات اتصال تلگرام پذیرفته نشد: $error',
+        message: 'تنظیمات اتصال تلگرام پذیرفته نشد یا پاسخ دریافت نشد: $error',
       ));
     }
   }
