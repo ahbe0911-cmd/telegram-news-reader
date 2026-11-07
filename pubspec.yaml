@@ -30,7 +30,7 @@ dependencies:
   chewie: ^1.17.4
   flutter_cached_pdfview: ^0.4.4
   file_saver: ^0.7.0
-  permission_handler: ^13.0.2
+  permission_handler: ^12.0.3
 
   path_provider: ^2.1.6
   shimmer: ^4.0.0
