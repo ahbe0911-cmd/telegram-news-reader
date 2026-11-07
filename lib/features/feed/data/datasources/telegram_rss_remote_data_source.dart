@@ -73,7 +73,7 @@ final class TelegramRssRemoteDataSource {
 
     final normalizedPath = base.path.endsWith('/')
         ? base.path
-        : '\${base.path}/';
+        : '${base.path}/';
 
     final root = base.replace(
       path: normalizedPath,
@@ -82,7 +82,7 @@ final class TelegramRssRemoteDataSource {
     );
 
     return root.resolve(
-      'telegram/channel/\${Uri.encodeComponent(channel.username)}',
+      'telegram/channel/${Uri.encodeComponent(channel.username)}',
     );
   }
 
@@ -95,7 +95,7 @@ final class TelegramRssRemoteDataSource {
       case DioExceptionType.receiveTimeout:
         return 'RSSHub در زمان تعیین‌شده پاسخ نداد.';
       case DioExceptionType.badResponse:
-        return 'RSSHub پاسخ نامعتبر داد (HTTP \${error.response?.statusCode ?? 'نامشخص'}).';
+        return 'RSSHub پاسخ نامعتبر داد (HTTP ${error.response?.statusCode ?? 'نامشخص'}).';
       case DioExceptionType.cancel:
         return 'درخواست دریافت خبر لغو شد.';
       case DioExceptionType.connectionError:
