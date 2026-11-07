@@ -1,6 +1,6 @@
 # Telegram News Reader
 
-A Persian RTL Flutter application for reading public Telegram channel posts through RSSHub, with local bookmarks and offline reading.
+A Persian RTL Flutter application for reading Telegram channel posts through TDLib/MTProto, with local bookmarks and offline reading.
 
 ## Project status
 
@@ -12,16 +12,6 @@ A Persian RTL Flutter application for reading public Telegram channel posts thro
 
 - Flutter stable with Dart 3.13 or newer.
 - Android SDK for Android builds.
-
-## RSSHub
-
-The default RSSHub base URL is `https://rsshub.app`. For reliability and rate-limit control, a self-hosted RSSHub instance is recommended.
-
-You can override it at build time:
-
-```bash
-flutter run --dart-define=RSSHUB_BASE_URL=https://your-rsshub.example
-```
 
 ## Android project scaffold
 
@@ -42,7 +32,7 @@ flutter test
 
 ## Notes
 
-RSS feeds are finite snapshots, not a guaranteed historical archive. The feed repository paginates the entries returned by RSSHub locally. Availability and media completeness depend on Telegram's public web preview and the configured RSSHub instance.
+Telegram messages are retrieved through the signed-in user's TDLib session. Private channels are available only when the account is already a member and the chat is present in the account's Telegram chat list.
 
 
 ## Direct Telegram connection (MTProto / TDLib)

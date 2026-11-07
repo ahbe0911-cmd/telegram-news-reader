@@ -14,7 +14,6 @@ import '../../features/channels/data/repositories/channel_repository_impl.dart';
 import '../../features/channels/domain/entities/telegram_channel.dart';
 import '../../features/channels/domain/repositories/channel_repository.dart';
 import '../../features/feed/data/datasources/telegram_tdlib_remote_data_source.dart';
-import '../../features/telegram/data/telegram_tdlib_service.dart';
 import '../../features/telegram/telegram_providers.dart';
 import '../../features/feed/data/repositories/feed_repository_impl.dart';
 import '../../features/feed/domain/entities/feed_page.dart';

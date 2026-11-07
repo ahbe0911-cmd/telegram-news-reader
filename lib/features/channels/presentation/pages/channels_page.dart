@@ -316,8 +316,12 @@ class _ChannelTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '@${channel.username}',
-          textDirection: TextDirection.ltr,
+          channel.isPrivateChat
+              ? 'کانال خصوصی در حساب تلگرام'
+              : '@${channel.username}',
+          textDirection: channel.isPrivateChat
+              ? TextDirection.rtl
+              : TextDirection.ltr,
         ),
         trailing: SizedBox(
           width: 108,
@@ -372,7 +376,7 @@ class _EmptyChannels extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'آیدی یک کانال عمومی تلگرام را اضافه کن تا پست‌های آن اینجا نمایش داده شوند.',
+              'یک کانال عمومی اضافه کن یا با دکمه همگام‌سازی، کانال‌های حساب تلگرامت را وارد کن.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
