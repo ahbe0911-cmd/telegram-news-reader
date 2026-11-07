@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
-import '../../../bookmarks/domain/entities/bookmark.dart';
 import '../../domain/entities/post.dart';
 import '../widgets/post_card.dart';
 
@@ -34,7 +33,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
     final saved = ref.watch(savedBookmarksProvider);
     final savedIds = saved.when(
       data: (items) => items.map((item) => item.post.id).toSet(),
-      error: (_, __) => <String>{},
+      error: (_, _) => <String>{},
       loading: () => <String>{},
     );
 
@@ -64,9 +63,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () async {
-                await ref.refresh(feedPostsProvider.future);
-              },
+              onRefresh: () => ref.refresh(feedPostsProvider.future).then((_) {}),
               child: feed.when(
                 data: (posts) {
                   if (posts.isEmpty) {
@@ -92,7 +89,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                     itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final post = filtered[index];
                       return PostCard(

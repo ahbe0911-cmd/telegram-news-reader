@@ -241,7 +241,7 @@ class _AttachmentPreview extends StatelessWidget {
                 : DecorationImage(
                     image: CachedNetworkImageProvider(attachment.thumbnailUrl!),
                     fit: BoxFit.cover,
-                    onError: (_, __) {},
+                    onError: (_, _) {},
                   ),
           ),
           child: Center(

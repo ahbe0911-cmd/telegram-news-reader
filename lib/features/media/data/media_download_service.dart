@@ -6,9 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import '../../feed/domain/entities/post.dart';
 
 final class MediaDownloadService {
-  const MediaDownloadService({required Dio dio}) : _dio = dio;
+  const MediaDownloadService({required this.dio});
 
-  final Dio _dio;
+  final Dio dio;
 
   Future<String> downloadAttachment(
     PostAttachment attachment, {
@@ -27,7 +27,7 @@ final class MediaDownloadService {
       return target.path;
     }
 
-    await _dio.download(
+    await dio.download(
       attachment.url,
       target.path,
       onReceiveProgress: onReceiveProgress,
