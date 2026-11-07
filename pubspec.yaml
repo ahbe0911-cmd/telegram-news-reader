@@ -33,7 +33,7 @@ dependencies:
   permission_handler: ^13.0.2
 
   path_provider: ^2.1.6
-  shimmer: ^3.0.0
+  shimmer: ^4.0.0
   intl: ^0.20.3
   url_launcher: ^6.3.3
 
