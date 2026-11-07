@@ -117,6 +117,13 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     ..._additionalPosts,
                   ];
 
+                  if (posts.isEmpty && page.hasSourceFailures) {
+                    return _FeedSourceErrors(
+                      failures: page.failures,
+                      onRetry: _refreshFeed,
+                    );
+                  }
+
                   if (posts.isEmpty) {
                     return _EmptyFeed(onOpenChannels: widget.onOpenChannels);
                   }
@@ -268,6 +275,56 @@ class _FeedPageState extends ConsumerState<FeedPage> {
         ),
       );
     }
+  }
+}
+
+class _FeedSourceErrors extends StatelessWidget {
+  const _FeedSourceErrors({
+    required this.failures,
+    required this.onRetry,
+  });
+
+  final List<FeedSourceFailure> failures;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 40),
+        Icon(
+          Icons.cloud_off_rounded,
+          size: 48,
+          color: colors.error,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'دریافت پست‌ها از تلگرام ناموفق بود',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+        ),
+        const SizedBox(height: 14),
+        for (final failure in failures)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.error_outline_rounded),
+              title: Text('@${failure.channelUsername}'),
+              subtitle: Text(failure.message),
+            ),
+          ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('تلاش دوباره'),
+        ),
+      ],
+    );
   }
 }
 

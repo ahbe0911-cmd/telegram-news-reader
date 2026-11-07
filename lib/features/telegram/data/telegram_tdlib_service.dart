@@ -201,9 +201,14 @@ class TelegramTdlibService {
     }, timeout: const Duration(seconds: 90));
   }
 
-  Future<Map<String, dynamic>> getChats({int limit = 100}) {
+  Future<Map<String, dynamic>> getChats({
+    int limit = 100,
+    bool archived = false,
+  }) {
     return _request('getChats', {
-      'chat_list': {'@type': 'chatListMain'},
+      'chat_list': {
+        '@type': archived ? 'chatListArchive' : 'chatListMain',
+      },
       'limit': limit.clamp(1, 200),
     });
   }
@@ -241,6 +246,16 @@ class TelegramTdlibService {
 
   Future<void> clearApiCredentials() async {
     await _stopWorker();
+    final supportDirectory = await getApplicationSupportDirectory();
+    for (final directoryName in const [
+      'telegram_database',
+      'telegram_files',
+    ]) {
+      final directory = Directory('${supportDirectory.path}/$directoryName');
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    }
     await _storage.delete(key: _apiIdKey);
     await _storage.delete(key: _apiHashKey);
     await _storage.delete(key: _databaseKey);

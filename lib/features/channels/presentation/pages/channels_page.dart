@@ -228,18 +228,30 @@ class ChannelsPage extends ConsumerWidget {
   ) async {
     try {
       final service = ref.read(telegramTdlibServiceProvider);
-      final response = await service.getChats(limit: 200);
-      final ids = response['chat_ids'];
-      if (ids is! List) {
-        throw StateError('فهرست گفتگوهای تلگرام دریافت نشد.');
+      final mainChats = await service.getChats(limit: 200);
+      final archivedChats = await service.getChats(
+        limit: 200,
+        archived: true,
+      );
+      final chatIds = <int>{};
+      for (final response in [mainChats, archivedChats]) {
+        final ids = response['chat_ids'];
+        if (ids is List) {
+          for (final rawId in ids) {
+            if (rawId is num) chatIds.add(rawId.toInt());
+          }
+        }
+      }
+      if (chatIds.isEmpty) {
+        throw StateError('در فهرست گفتگوهای تلگرام، چتی پیدا نشد.');
       }
 
       final repository = await ref.read(channelRepositoryProvider.future);
       var added = 0;
 
-      for (final rawId in ids) {
-        if (rawId is! num) continue;
-        final chat = await service.getChat(rawId.toInt());
+      for (final chatIdValue in chatIds) {
+        final rawId = chatIdValue;
+        final chat = await service.getChat(rawId);
         final type = chat['type'];
         if (type is! Map ||
             type['@type'] != 'chatTypeSupergroup' ||
