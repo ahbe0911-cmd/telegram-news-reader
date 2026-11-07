@@ -49,7 +49,7 @@ class ChannelsPage extends ConsumerWidget {
                       username: channel.username,
                       enabled: enabled,
                     );
-                    ref.invalidate(feedPostsProvider);
+                    ref.invalidate(feedPageProvider());
                   } catch (error) {
                     if (!context.mounted) return;
                     _showMessage(context, 'تغییر وضعیت انجام نشد: $error');
@@ -82,7 +82,7 @@ class ChannelsPage extends ConsumerWidget {
                     final repository =
                         await ref.read(channelRepositoryProvider.future);
                     await repository.remove(channel.username);
-                    ref.invalidate(feedPostsProvider);
+                    ref.invalidate(feedPageProvider());
                   } catch (error) {
                     if (!context.mounted) return;
                     _showMessage(context, 'حذف کانال انجام نشد: $error');
@@ -162,7 +162,7 @@ class ChannelsPage extends ConsumerWidget {
                   final repository =
                       await ref.read(channelRepositoryProvider.future);
                   await repository.upsert(channel);
-                  ref.invalidate(feedPostsProvider);
+                  ref.invalidate(feedPageProvider());
 
                   if (dialogContext.mounted) {
                     Navigator.pop(dialogContext);
