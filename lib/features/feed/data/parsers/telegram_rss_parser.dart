@@ -290,9 +290,8 @@ final class TelegramRssParser {
           '\n',
         );
 
-    return html_parser
-        .parseFragment(normalizedHtml)
-        .text
+    final text = html_parser.parseFragment(normalizedHtml).text ?? '';
+    return text
         .replaceAll('\u00a0', ' ')
         .replaceAll(RegExp(r'[ \t]+\n'), '\n')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')

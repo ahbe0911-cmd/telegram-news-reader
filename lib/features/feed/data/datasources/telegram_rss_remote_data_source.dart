@@ -8,12 +8,10 @@ import '../parsers/telegram_rss_parser.dart';
 
 final class TelegramRssRemoteDataSource {
   TelegramRssRemoteDataSource({
-    required Dio dio,
-    required TelegramRssParser parser,
-    required String baseUrl,
-  })  : _dio = dio,
-        _parser = parser,
-        _baseUrl = baseUrl;
+    required this._dio,
+    required this._parser,
+    required this._baseUrl,
+  });
 
   final Dio _dio;
   final TelegramRssParser _parser;
@@ -73,7 +71,7 @@ final class TelegramRssRemoteDataSource {
 
     final normalizedPath = base.path.endsWith('/')
         ? base.path
-        : '${base.path}/';
+        : '\${base.path}/';
 
     final root = base.replace(
       path: normalizedPath,
@@ -82,7 +80,7 @@ final class TelegramRssRemoteDataSource {
     );
 
     return root.resolve(
-      'telegram/channel/${Uri.encodeComponent(channel.username)}',
+      'telegram/channel/\${Uri.encodeComponent(channel.username)}',
     );
   }
 
@@ -94,8 +92,10 @@ final class TelegramRssRemoteDataSource {
         return 'ارسال درخواست به RSSHub بیش از حد طول کشید.';
       case DioExceptionType.receiveTimeout:
         return 'RSSHub در زمان تعیین‌شده پاسخ نداد.';
+      case DioExceptionType.transformTimeout:
+        return 'پردازش پاسخ RSSHub بیش از حد طول کشید.';
       case DioExceptionType.badResponse:
-        return 'RSSHub پاسخ نامعتبر داد (HTTP ${error.response?.statusCode ?? 'نامشخص'}).';
+        return 'RSSHub پاسخ نامعتبر داد (HTTP \${error.response?.statusCode ?? 'نامشخص'}).';
       case DioExceptionType.cancel:
         return 'درخواست دریافت خبر لغو شد.';
       case DioExceptionType.connectionError:

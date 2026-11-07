@@ -6,9 +6,7 @@ import '../../domain/repositories/feed_repository.dart';
 import '../datasources/telegram_rss_remote_data_source.dart';
 
 final class FeedRepositoryImpl implements FeedRepository {
-  FeedRepositoryImpl({
-    required TelegramRssRemoteDataSource remoteDataSource,
-  }) : _remoteDataSource = remoteDataSource;
+  FeedRepositoryImpl({required this._remoteDataSource});
 
   final TelegramRssRemoteDataSource _remoteDataSource;
 

@@ -17,6 +17,7 @@ import '../../features/feed/data/datasources/telegram_rss_remote_data_source.dar
 import '../../features/feed/data/parsers/telegram_rss_parser.dart';
 import '../../features/feed/data/repositories/feed_repository_impl.dart';
 import '../../features/feed/domain/entities/feed_page.dart';
+import '../../features/feed/domain/entities/post.dart';
 import '../../features/feed/domain/repositories/feed_repository.dart';
 import '../config/app_config.dart';
 
@@ -118,4 +119,30 @@ Future<FeedPage> feedPage(
     pageSize: AppConfig.feedPageSize,
     forceRefresh: forceRefresh,
   );
+}
+
+@Riverpod(keepAlive: true)
+Future<List<Post>> feedPosts(Ref ref) async {
+  final channelRepository = await ref.watch(channelRepositoryProvider.future);
+  final channels = await channelRepository.getEnabled();
+  final repository = ref.watch(feedRepositoryProvider);
+
+  final posts = <Post>[];
+  var offset = 0;
+  var hasMore = true;
+
+  while (hasMore && posts.length < 100) {
+    final page = await repository.getPage(
+      channels: channels,
+      offset: offset,
+      pageSize: AppConfig.feedPageSize,
+    );
+
+    posts.addAll(page.posts);
+    offset = page.nextOffset;
+    hasMore = page.hasMore;
+    if (page.posts.isEmpty) break;
+  }
+
+  return List.unmodifiable(posts);
 }
