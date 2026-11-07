@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/telegram_tdlib_service.dart';
+import 'main_shell.dart';
 import '../telegram_providers.dart';
 
 class TelegramAuthGate extends ConsumerStatefulWidget {
@@ -498,29 +499,5 @@ class _AuthenticatedHome extends StatelessWidget {
   const _AuthenticatedHome();
 
   @override
-  Widget build(BuildContext context) {
-    return const _MainShellLoader();
-  }
-}
-
-class _MainShellLoader extends StatelessWidget {
-  const _MainShellLoader();
-
-  @override
-  Widget build(BuildContext context) {
-    return const _TelegramMainShellPlaceholder();
-  }
-}
-
-class _TelegramMainShellPlaceholder extends StatelessWidget {
-  const _TelegramMainShellPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('اتصال تلگرام برقرار شد. در حال آماده‌سازی خبرها…'),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const MainShell();
 }
