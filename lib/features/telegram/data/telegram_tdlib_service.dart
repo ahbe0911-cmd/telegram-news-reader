@@ -881,18 +881,23 @@ Future<void> _tdlibWorkerMain(Map<String, dynamic> bootstrap) async {
     // at most one second, so command-port events are still serviced regularly.
     while (true) {
       final raw = TdPlugin.instance.tdReceive(1);
-      if (raw == null || raw.isEmpty) continue;
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          mainPort.send(decoded);
 
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) continue;
+          final authorization = decoded['authorization_state'];
+          final isClosed = decoded['@type'] == 'updateAuthorizationState' &&
+              authorization is Map &&
+              authorization['@type'] == 'authorizationStateClosed';
+          if (stopRequested && isClosed) break;
+        }
+      }
 
-      mainPort.send(decoded);
-
-      final authorization = decoded['authorization_state'];
-      final isClosed = decoded['@type'] == 'updateAuthorizationState' &&
-          authorization is Map &&
-          authorization['@type'] == 'authorizationStateClosed';
-      if (stopRequested && isClosed) break;
+      // tdReceive is a blocking FFI call. Yield back to the isolate event loop
+      // so command-port requests (including authentication and channel fetches)
+      // can be dispatched before the next receive call.
+      await Future<void>.delayed(Duration.zero);
     }
 
     commandPort.close();
