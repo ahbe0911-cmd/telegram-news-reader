@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../media/presentation/pages/image_viewer_page.dart';
-import '../../../media/presentation/pages/video_player_page.dart';
+import '../../../media/presentation/pages/pdf_viewer_page.dart';
+import '../../../media/presentation/widgets/inline_video_player.dart';
 import '../../domain/entities/post.dart';
 
 class PostCard extends StatelessWidget {
@@ -30,6 +31,12 @@ class PostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final nonVideoAttachments = post.attachments
+        .where((attachment) => attachment.type != PostAttachmentType.video)
+        .toList(growable: false);
+    final videoAttachments = post.attachments
+        .where((attachment) => attachment.type == PostAttachmentType.video)
+        .toList(growable: false);
 
     return Card(
       child: Padding(
@@ -97,17 +104,25 @@ class PostCard extends StatelessWidget {
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.85),
               ),
             ],
-            if (post.attachments.isNotEmpty) ...[
+            if (nonVideoAttachments.isNotEmpty) ...[
               const SizedBox(height: 14),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: post.attachments.map((attachment) {
+                children: nonVideoAttachments.map((attachment) {
                   return _AttachmentPreview(
                     attachment: attachment,
                     localPath: localMediaPaths[attachment.url],
                   );
-                }).toList(),
+                }).toList(growable: false),
+              ),
+            ],
+            for (final attachment in videoAttachments) ...[
+              const SizedBox(height: 14),
+              InlineVideoPlayer(
+                url: attachment.url,
+                localPath: localMediaPaths[attachment.url],
+                thumbnailUrl: attachment.thumbnailUrl,
               ),
             ],
             const SizedBox(height: 12),
@@ -121,7 +136,9 @@ class PostCard extends StatelessWidget {
                     isBookmarked
                         ? Icons.bookmark_rounded
                         : Icons.bookmark_border_rounded,
-                    color: isBookmarked ? colors.primary : colors.onSurfaceVariant,
+                    color: isBookmarked
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
                   ),
                 ),
                 if (onDownload != null)
@@ -178,6 +195,11 @@ class _AttachmentPreview extends StatelessWidget {
   final PostAttachment attachment;
   final String? localPath;
 
+  bool get _isPdf =>
+      attachment.mimeType?.toLowerCase().contains('pdf') == true ||
+      attachment.fileName?.toLowerCase().endsWith('.pdf') == true ||
+      Uri.tryParse(attachment.url)?.path.toLowerCase().endsWith('.pdf') == true;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -199,7 +221,13 @@ class _AttachmentPreview extends StatelessWidget {
             width: 142,
             height: 118,
             child: localPath != null
-                ? Image.file(File(localPath!), fit: BoxFit.cover)
+                ? Image.file(
+                    File(localPath!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.broken_image_outlined,
+                    ),
+                  )
                 : CachedNetworkImage(
                     imageUrl: attachment.url,
                     fit: BoxFit.cover,
@@ -219,47 +247,6 @@ class _AttachmentPreview extends StatelessWidget {
       );
     }
 
-    if (attachment.type == PostAttachmentType.video) {
-      return InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => VideoPlayerPage(
-              url: attachment.url,
-              localPath: localPath,
-            ),
-          ),
-        ),
-        child: Container(
-          width: 142,
-          height: 118,
-          decoration: BoxDecoration(
-            color: colors.inverseSurface,
-            borderRadius: BorderRadius.circular(14),
-            image: attachment.thumbnailUrl == null
-                ? null
-                : DecorationImage(
-                    image: CachedNetworkImageProvider(attachment.thumbnailUrl!),
-                    fit: BoxFit.cover,
-                    onError: (_, _) {},
-                  ),
-          ),
-          child: Center(
-            child: CircleAvatar(
-              backgroundColor: Colors.black54,
-              foregroundColor: Colors.white,
-              child: Icon(
-                localPath == null
-                    ? Icons.play_arrow_rounded
-                    : Icons.play_circle_fill_rounded,
-                size: 30,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     final icon = switch (attachment.type) {
       PostAttachmentType.audio => Icons.audiotrack_rounded,
       PostAttachmentType.document => Icons.description_outlined,
@@ -269,6 +256,19 @@ class _AttachmentPreview extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () async {
+        if (_isPdf) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => PdfViewerPage(
+                url: attachment.url,
+                localPath: localPath,
+                fileName: attachment.fileName,
+              ),
+            ),
+          );
+          return;
+        }
+
         await launchUrl(
           Uri.parse(attachment.url),
           mode: LaunchMode.externalApplication,

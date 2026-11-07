@@ -36,6 +36,7 @@ dependencies:
   shimmer: ^4.0.0
   intl: ^0.20.3
   url_launcher: ^6.3.3
+  visibility_detector: ^0.4.0+2
 
 dev_dependencies:
   flutter_test:

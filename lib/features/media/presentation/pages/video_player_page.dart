@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -19,36 +20,55 @@ class VideoPlayerPage extends StatefulWidget {
 
 class _VideoPlayerPageState extends State<VideoPlayerPage>
     with WidgetsBindingObserver {
-  late final VideoPlayerController _controller;
-  late final Future<void> _initialization;
+  late final VideoPlayerController _videoController;
+  ChewieController? _chewieController;
+  Object? _error;
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    _controller = widget.localPath != null
+    _videoController = widget.localPath != null
         ? VideoPlayerController.file(File(widget.localPath!))
         : VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _initialize();
+  }
 
-    _initialization = _controller.initialize().then((_) {
-      _controller.setLooping(false);
-      if (mounted) setState(() {});
-      return _controller.play();
-    });
+  Future<void> _initialize() async {
+    try {
+      await _videoController.initialize();
+      if (!mounted) return;
+      _chewieController = ChewieController(
+        videoPlayerController: _videoController,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: _videoController.value.aspectRatio > 0
+            ? _videoController.value.aspectRatio
+            : 16 / 9,
+        allowFullScreen: true,
+        allowMuting: true,
+      );
+      setState(() => _initialized = true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed && _controller.value.isPlaying) {
-      _controller.pause();
+    if (state != AppLifecycleState.resumed &&
+        _videoController.value.isInitialized &&
+        _videoController.value.isPlaying) {
+      _videoController.pause();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
+    _chewieController?.dispose();
+    _videoController.dispose();
     super.dispose();
   }
 
@@ -62,64 +82,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         title: const Text('پخش ویدئو'),
       ),
       body: Center(
-        child: FutureBuilder<void>(
-          future: _initialization,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return const Text(
+        child: _error != null
+            ? const Text(
                 'پخش ویدئو ممکن نیست.',
                 style: TextStyle(color: Colors.white),
-              );
-            }
-
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const CircularProgressIndicator(color: Colors.white);
-            }
-
-            return Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio == 0
-                        ? 16 / 9
-                        : _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
-                  ),
-                  const SizedBox(height: 14),
-                  VideoProgressIndicator(
-                    _controller,
-                    allowScrubbing: true,
-                    colors: const VideoProgressColors(
-                      playedColor: Color(0xFF77D0C0),
-                      bufferedColor: Colors.white38,
-                      backgroundColor: Colors.white24,
+              )
+            : !_initialized || _chewieController == null
+                ? const CircularProgressIndicator(color: Colors.white)
+                : Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: AspectRatio(
+                      aspectRatio: _videoController.value.aspectRatio,
+                      child: Chewie(controller: _chewieController!),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  IconButton.filledTonal(
-                    onPressed: () {
-                      setState(() {
-                        if (_controller.value.isPlaying) {
-                          _controller.pause();
-                        } else {
-                          _controller.play();
-                        }
-                      });
-                    },
-                    icon: Icon(
-                      _controller.value.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                    ),
-                    iconSize: 30,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
       ),
     );
   }

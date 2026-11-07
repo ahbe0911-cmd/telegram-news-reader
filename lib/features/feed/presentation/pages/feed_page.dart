@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
 import '../../domain/entities/post.dart';
+import '../widgets/feed_loading_skeleton.dart';
 import '../widgets/post_card.dart';
 
 class FeedPage extends ConsumerStatefulWidget {
@@ -19,7 +20,11 @@ class FeedPage extends ConsumerStatefulWidget {
 
 class _FeedPageState extends ConsumerState<FeedPage> {
   final TextEditingController _searchController = TextEditingController();
+  final List<Post> _additionalPosts = [];
   String _query = '';
+  bool _loadingMore = false;
+  bool _endReached = false;
+  String? _loadMoreError;
 
   @override
   void dispose() {
@@ -27,9 +32,50 @@ class _FeedPageState extends ConsumerState<FeedPage> {
     super.dispose();
   }
 
+  Future<void> _refreshFeed() async {
+    setState(() {
+      _additionalPosts.clear();
+      _loadingMore = false;
+      _endReached = false;
+      _loadMoreError = null;
+    });
+    await ref.refresh(feedPageProvider().future);
+  }
+
+  Future<void> _loadMore(int offset) async {
+    if (_loadingMore || _endReached) return;
+
+    setState(() {
+      _loadingMore = true;
+      _loadMoreError = null;
+    });
+
+    try {
+      final page = await ref.read(
+        feedPageProvider(offset: offset).future,
+      );
+
+      if (!mounted) return;
+
+      final knownIds = _additionalPosts.map((post) => post.id).toSet();
+      setState(() {
+        _additionalPosts.addAll(
+          page.posts.where((post) => !knownIds.contains(post.id)),
+        );
+        _endReached = !page.hasMore;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadMoreError = error.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final feed = ref.watch(feedPostsProvider);
+    final feed = ref.watch(feedPageProvider());
     final saved = ref.watch(savedBookmarksProvider);
     final savedIds = saved.when(
       data: (items) => items.map((item) => item.post.id).toSet(),
@@ -43,7 +89,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
         actions: [
           IconButton(
             tooltip: 'به‌روزرسانی خبرها',
-            onPressed: () => ref.invalidate(feedPostsProvider),
+            onPressed: _refreshFeed,
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -63,9 +109,14 @@ class _FeedPageState extends ConsumerState<FeedPage> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => ref.refresh(feedPostsProvider.future).then((_) {}),
+              onRefresh: _refreshFeed,
               child: feed.when(
-                data: (posts) {
+                data: (page) {
+                  final posts = [
+                    ...page.posts,
+                    ..._additionalPosts,
+                  ];
+
                   if (posts.isEmpty) {
                     return _EmptyFeed(onOpenChannels: widget.onOpenChannels);
                   }
@@ -85,12 +136,52 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     );
                   }
 
+                  final canLoadMore = page.hasMore && !_endReached;
+                  final showFooter =
+                      canLoadMore || _loadingMore || _loadMoreError != null;
+
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                    itemCount: filtered.length,
+                    itemCount: filtered.length + (showFooter ? 1 : 0),
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
+                      if (index == filtered.length) {
+                        if (_loadingMore) {
+                          return const Padding(
+                            padding: EdgeInsets.all(18),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        if (_loadMoreError != null) {
+                          return OutlinedButton.icon(
+                            onPressed: () => _loadMore(
+                              page.nextOffset + _additionalPosts.length,
+                            ),
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text(
+                              'بارگذاری بیشتر ناموفق بود؛ تلاش دوباره',
+                            ),
+                          );
+                        }
+
+                        return const SizedBox(height: 12);
+                      }
+
+                      if (index >= filtered.length - 3 &&
+                          canLoadMore &&
+                          !_loadingMore &&
+                          _loadMoreError == null) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && !_loadingMore && !_endReached) {
+                            _loadMore(
+                              page.nextOffset + _additionalPosts.length,
+                            );
+                          }
+                        });
+                      }
+
                       final post = filtered[index];
                       return PostCard(
                         post: post,
@@ -104,15 +195,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     },
                   );
                 },
-                loading: () => ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 180),
-                    Center(child: CircularProgressIndicator()),
-                    SizedBox(height: 16),
-                    Center(child: Text('در حال دریافت خبرها...')),
-                  ],
-                ),
+                loading: () => const FeedLoadingSkeleton(),
                 error: (error, stackTrace) => ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(24),
@@ -125,7 +208,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
                     const SizedBox(height: 16),
                     Center(
                       child: FilledButton.icon(
-                        onPressed: () => ref.invalidate(feedPostsProvider),
+                        onPressed: () => ref.invalidate(feedPageProvider()),
                         icon: const Icon(Icons.refresh_rounded),
                         label: const Text('تلاش دوباره'),
                       ),
