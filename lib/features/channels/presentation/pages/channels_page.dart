@@ -116,6 +116,7 @@ class ChannelsPage extends ConsumerWidget {
     final usernameController = TextEditingController();
     final titleController = TextEditingController();
     String? errorText;
+    bool isSaving = false;
 
     await showDialog<void>(
       context: context,
@@ -128,10 +129,11 @@ class ChannelsPage extends ConsumerWidget {
               TextField(
                 controller: usernameController,
                 textDirection: TextDirection.ltr,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
-                  hintText: 'channel_username',
-                  labelText: 'آیدی کانال',
-                  prefixText: '@',
+                  hintText: '@channel یا https://t.me/channel یا شناسه عددی',
+                  labelText: 'آیدی یا لینک کانال',
                 ),
               ),
               const SizedBox(height: 12),
@@ -159,46 +161,64 @@ class ChannelsPage extends ConsumerWidget {
               child: const Text('انصراف'),
             ),
             FilledButton(
-              onPressed: () async {
-                try {
-                  final resolved = await ref
-                      .read(telegramTdlibServiceProvider)
-                      .resolvePublicChannel(usernameController.text);
-                  final resolvedId = (resolved['id'] as num?)?.toInt();
-                  if (resolvedId == null) {
-                    throw StateError('تلگرام برای این آیدی کانالی پیدا نکرد.');
-                  }
-                  final resolvedUsername = _publicUsername(resolved) ??
-                      usernameController.text.trim().replaceFirst(
-                            RegExp(r'^@'),
-                            '',
-                          );
-                  final resolvedTitle = titleController.text.trim().isNotEmpty
-                      ? titleController.text.trim()
-                      : resolved['title']?.toString();
-                  final channel = TelegramChannel(
-                    username: resolvedUsername,
-                    title: resolvedTitle,
-                    chatId: resolvedId,
-                  );
-                  final repository =
-                      await ref.read(channelRepositoryProvider.future);
-                  await repository.upsert(channel);
-                  ref.invalidate(feedPageProvider());
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      setDialogState(() {
+                        isSaving = true;
+                        errorText = null;
+                      });
+                      try {
+                        final resolved = await ref
+                            .read(telegramTdlibServiceProvider)
+                            .resolveChannel(usernameController.text);
+                        final resolvedId = (resolved['id'] as num?)?.toInt();
+                        if (resolvedId == null) {
+                          throw StateError('تلگرام شناسه معتبری برای کانال برنگرداند.');
+                        }
+                        final resolvedUsername = _publicUsername(resolved) ??
+                            'chat_${resolvedId.abs()}';
+                        final resolvedTitle =
+                            titleController.text.trim().isNotEmpty
+                                ? titleController.text.trim()
+                                : resolved['title']?.toString();
+                        final channel = TelegramChannel(
+                          username: resolvedUsername,
+                          title: resolvedTitle,
+                          chatId: resolvedId,
+                        );
+                        final repository =
+                            await ref.read(channelRepositoryProvider.future);
+                        await repository.upsert(channel);
+                        ref.invalidate(feedPageProvider());
 
-                  if (dialogContext.mounted) {
-                    Navigator.pop(dialogContext);
-                    _showMessage(context, 'کانال اضافه شد.');
-                  }
-                } catch (error) {
-                  setDialogState(() {
-                    errorText = error is ArgumentError
-                        ? 'آیدی کانال باید بین ۵ تا ۳۲ حرف، عدد یا زیرخط باشد.'
-                        : 'کانال پیدا نشد یا دسترسی به آن ممکن نیست: $error';
-                  });
-                }
-              },
-              child: const Text('ذخیره کانال'),
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                          if (context.mounted) {
+                            _showMessage(context, 'کانال اضافه شد.');
+                          }
+                        }
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() {
+                            errorText = error is ArgumentError
+                                ? 'آیدی کانال یا لینک عمومی معتبر نیست. برای کانال خصوصی، شناسه باید در حساب تلگرام قابل‌دسترسی باشد.'
+                                : 'افزودن کانال ناموفق بود: $error';
+                          });
+                        }
+                      } finally {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => isSaving = false);
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('ذخیره کانال'),
             ),
           ],
         ),

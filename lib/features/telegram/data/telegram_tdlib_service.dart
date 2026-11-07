@@ -72,7 +72,13 @@ class TelegramTdlibService {
   bool _restoreStarted = false;
   bool _tdlibParametersSent = false;
   bool _databaseKeySent = false;
+  bool _sendingParameters = false;
+  bool _workerStopping = false;
   bool _disposed = false;
+  Completer<void>? _workerStopped;
+  Timer? _authorizationProbeTimer;
+  String? _lastAuthorizationState;
+  Future<void>? _startingWorker;
 
   TelegramAuthStatus get status => _status;
   Stream<TelegramAuthStatus> get statusStream => _statusController.stream;
@@ -114,11 +120,13 @@ class TelegramTdlibService {
       await _ensureDatabaseKey().timeout(const Duration(seconds: 15));
       await _startWorker();
     } catch (error) {
+      // Allow the Retry button to re-read secure storage after an early failure.
+      _restoreStarted = false;
       if (_status.stage != TelegramAuthStage.error) {
         _emit(TelegramAuthStatus(
           TelegramAuthStage.error,
           message: error is TimeoutException
-              ? 'مهلت بازیابی اتصال تلگرام تمام شد. اتصال اینترنت و تنظیمات ورود را بررسی کن.'
+              ? 'مهلت بازیابی اطلاعات ورود تمام شد. دوباره تلاش کن.'
               : 'بازیابی تنظیمات اتصال تلگرام ناموفق بود: $error',
         ));
       }
@@ -199,9 +207,59 @@ class TelegramTdlibService {
   Future<Map<String, dynamic>> resolvePublicChannel(String username) async {
     final normalized = username.trim().replaceFirst(RegExp(r'^@'), '');
     if (!RegExp(r'^[A-Za-z0-9_]{5,32}$').hasMatch(normalized)) {
-      throw ArgumentError('آیدی عمومی کانال معتبر نیست.');
+      throw ArgumentError('نام کاربری عمومی کانال معتبر نیست.');
     }
-    return _request('searchPublicChat', {'username': normalized});
+
+    final chat = await _request('searchPublicChat', {'username': normalized});
+    _validateChannelChat(chat);
+    return chat;
+  }
+
+  /// Accepts a public @username, t.me link, or a numeric chat ID already
+  /// known to this Telegram account (for example a private channel ID).
+  Future<Map<String, dynamic>> resolveChannel(String input) async {
+    var normalized = input.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('آیدی یا لینک کانال را وارد کن.');
+    }
+
+    final linkCandidate = normalized.startsWith('t.me/')
+        ? 'https://$normalized'
+        : normalized;
+    final uri = Uri.tryParse(linkCandidate);
+    if (uri != null &&
+        (uri.host.toLowerCase() == 't.me' ||
+            uri.host.toLowerCase() == 'www.t.me')) {
+      final segments =
+          uri.pathSegments.where((part) => part.isNotEmpty).toList();
+      if (segments.isEmpty) {
+        throw ArgumentError('لینک کانال معتبر نیست.');
+      }
+      normalized = segments.first == 's' && segments.length > 1
+          ? segments[1]
+          : segments.first;
+    }
+
+    final numericChatId = int.tryParse(normalized);
+    if (numericChatId != null) {
+      if (numericChatId == 0) {
+        throw ArgumentError('شناسه عددی کانال معتبر نیست.');
+      }
+      final chat = await getChat(numericChatId);
+      _validateChannelChat(chat);
+      return chat;
+    }
+
+    return resolvePublicChannel(normalized);
+  }
+
+  void _validateChannelChat(Map<String, dynamic> chat) {
+    final type = chat['type'];
+    if (type is! Map ||
+        type['@type'] != 'chatTypeSupergroup' ||
+        type['is_channel'] != true) {
+      throw StateError('این شناسه متعلق به یک کانال تلگرام نیست.');
+    }
   }
 
   Future<Map<String, dynamic>> getChatHistory({
@@ -254,6 +312,7 @@ class TelegramTdlibService {
 
   Future<void> retry() async {
     if (_apiId == null || _apiHash == null) {
+      _restoreStarted = false;
       await restore();
       return;
     }
@@ -296,7 +355,20 @@ class TelegramTdlibService {
     _databaseEncryptionKey = key;
   }
 
-  Future<void> _startWorker() async {
+  Future<void> _startWorker() {
+    final activeStart = _startingWorker;
+    if (activeStart != null) return activeStart;
+
+    final start = _startWorkerInternal();
+    _startingWorker = start;
+    return start.whenComplete(() {
+      if (identical(_startingWorker, start)) {
+        _startingWorker = null;
+      }
+    });
+  }
+
+  Future<void> _startWorkerInternal() async {
     final apiId = _apiId;
     final apiHash = _apiHash;
     final databaseKey = _databaseEncryptionKey;
@@ -307,12 +379,16 @@ class TelegramTdlibService {
       return;
     }
 
+    _authorizationProbeTimer?.cancel();
+    _tdlibParametersSent = false;
+    _databaseKeySent = false;
+    _sendingParameters = false;
+    _lastAuthorizationState = null;
+
     _emit(const TelegramAuthStatus(
       TelegramAuthStage.initializing,
       message: 'در حال آماده‌سازی موتور تلگرام…',
     ));
-    _tdlibParametersSent = false;
-    _databaseKeySent = false;
 
     try {
       final supportDirectory = await getApplicationSupportDirectory()
@@ -325,6 +401,7 @@ class TelegramTdlibService {
       await filesDirectory.create(recursive: true);
 
       _workerReady = Completer<void>();
+      _workerStopped = Completer<void>();
       _workerReceivePort = ReceivePort();
       _workerSubscription = _workerReceivePort!.listen(_handleWorkerMessage);
 
@@ -350,13 +427,12 @@ class TelegramTdlibService {
         message: 'موتور تلگرام آماده شد؛ در حال بررسی وضعیت نشست…',
       ));
 
-      // TDLib normally pushes updateAuthorizationState after client creation.
-      // Querying it as well prevents a silent loading screen if that first
-      // update was missed during isolate startup.
+      // TDLib starts with authorizationStateWaitTdlibParameters. This query
+      // is a fallback in case the first update arrived before the UI listener.
       final authorization = await _request(
         'getAuthorizationState',
         const {},
-        timeout: const Duration(seconds: 15),
+        timeout: const Duration(seconds: 20),
       );
       final stateName = authorization['@type']?.toString();
       if (stateName == null || !stateName.startsWith('authorizationState')) {
@@ -369,7 +445,7 @@ class TelegramTdlibService {
       await _stopWorker();
       _emit(TelegramAuthStatus(
         TelegramAuthStage.error,
-        message: 'تلگرام در زمان مجاز پاسخ نداد. اینترنت یا دسترسی شبکه را بررسی کن. ($error)',
+        message: 'تلگرام در زمان مجاز پاسخ نداد. آخرین مرحله اتصال کامل نشد: $error',
       ));
       rethrow;
     } catch (error) {
@@ -384,22 +460,25 @@ class TelegramTdlibService {
 
   void _handleWorkerMessage(dynamic message) {
     if (message == null) {
+      if (_workerStopping) {
+        if (!(_workerStopped?.isCompleted ?? true)) {
+          _workerStopped!.complete();
+        }
+        return;
+      }
       if (!_disposed &&
           _worker != null &&
           _status.stage != TelegramAuthStage.error &&
           _status.stage != TelegramAuthStage.closed) {
-        _emit(const TelegramAuthStatus(
-          TelegramAuthStage.error,
-          message: 'پردازش پس‌زمینه تلگرام متوقف شد. برای اتصال دوباره تلاش کن.',
-        ));
+        _reportWorkerFailure(
+          'پردازش پس‌زمینه تلگرام بدون درخواست توقف بسته شد.',
+        );
       }
       return;
     }
+
     if (message is List && message.isNotEmpty) {
-      _emit(TelegramAuthStatus(
-        TelegramAuthStage.error,
-        message: 'خطای پردازش موتور تلگرام: ${message.first}',
-      ));
+      _reportWorkerFailure('خطای پردازش موتور تلگرام: ${message.first}');
       return;
     }
     if (message is! Map) return;
@@ -410,11 +489,16 @@ class TelegramTdlibService {
       if (!(_workerReady?.isCompleted ?? true)) _workerReady!.complete();
       return;
     }
+    if (data['kind'] == 'stopped') {
+      if (!(_workerStopped?.isCompleted ?? true)) {
+        _workerStopped!.complete();
+      }
+      return;
+    }
     if (data['kind'] == 'workerError') {
-      _emit(TelegramAuthStatus(
-        TelegramAuthStage.error,
-        message: data['message']?.toString() ?? 'خطای ناشناخته TDLib',
-      ));
+      _reportWorkerFailure(
+        data['message']?.toString() ?? 'خطای ناشناخته TDLib',
+      );
       return;
     }
 
@@ -444,10 +528,32 @@ class TelegramTdlibService {
     }
   }
 
+  void _reportWorkerFailure(String message) {
+    final error = StateError(message);
+    if (!(_workerReady?.isCompleted ?? true)) {
+      _workerReady!.completeError(error);
+    }
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) completer.completeError(error);
+    }
+    _pending.clear();
+
+    if (!_disposed && _status.stage != TelegramAuthStage.error) {
+      _emit(TelegramAuthStatus(
+        TelegramAuthStage.error,
+        message: message,
+      ));
+    }
+  }
+
   void _handleAuthorizationState(String stateName) {
+    _lastAuthorizationState = stateName;
+    _authorizationProbeTimer?.cancel();
+    _authorizationProbeTimer = null;
+
     switch (stateName) {
       case 'authorizationStateWaitTdlibParameters':
-        if (!_tdlibParametersSent) {
+        if (!_tdlibParametersSent && !_sendingParameters) {
           _tdlibParametersSent = true;
           _emit(const TelegramAuthStatus(
             TelegramAuthStage.initializing,
@@ -463,15 +569,7 @@ class TelegramTdlibService {
             TelegramAuthStage.initializing,
             message: 'در حال بازکردن پایگاه داده رمزگذاری‌شده…',
           ));
-          unawaited(_request('checkDatabaseEncryptionKey', {
-            'encryption_key': _databaseEncryptionKey ?? '',
-          }).catchError((Object error) {
-            _emit(TelegramAuthStatus(
-              TelegramAuthStage.error,
-              message: 'بازکردن پایگاه داده تلگرام ناموفق بود: $error',
-            ));
-            return <String, dynamic>{};
-          }));
+          unawaited(_checkDatabaseEncryptionKey());
         }
         break;
       case 'authorizationStateWaitPhoneNumber':
@@ -526,12 +624,80 @@ class TelegramTdlibService {
       default:
         _emit(TelegramAuthStatus(
           TelegramAuthStage.initializing,
-          message: 'وضعیت اتصال: $stateName',
+          message: 'وضعیت اتصال تلگرام: ${stateName.isEmpty ? 'نامشخص' : stateName}',
         ));
     }
   }
 
+  Future<void> _checkDatabaseEncryptionKey() async {
+    try {
+      await _request('checkDatabaseEncryptionKey', {
+        'encryption_key': _databaseEncryptionKey ?? '',
+      }, timeout: const Duration(seconds: 30));
+      _scheduleAuthorizationProbe(
+        expectedState: 'authorizationStateWaitEncryptionKey',
+        failureMessage: 'کلید پایگاه داده پذیرفته شد، اما وضعیت نشست تلگرام تغییر نکرد.',
+      );
+    } catch (error) {
+      _databaseKeySent = false;
+      _emit(TelegramAuthStatus(
+        TelegramAuthStage.error,
+        message: 'بازکردن پایگاه داده تلگرام ناموفق بود: $error',
+      ));
+    }
+  }
+
+  void _scheduleAuthorizationProbe({
+    required String expectedState,
+    required String failureMessage,
+  }) {
+    _authorizationProbeTimer?.cancel();
+    _authorizationProbeTimer = Timer(const Duration(seconds: 8), () {
+      unawaited(_probeAuthorizationState(
+        expectedState: expectedState,
+        failureMessage: failureMessage,
+      ));
+    });
+  }
+
+  Future<void> _probeAuthorizationState({
+    required String expectedState,
+    required String failureMessage,
+  }) async {
+    if (_disposed || _status.stage != TelegramAuthStage.initializing) return;
+
+    try {
+      final authorization = await _request(
+        'getAuthorizationState',
+        const {},
+        timeout: const Duration(seconds: 15),
+      );
+      final stateName = authorization['@type']?.toString();
+      if (stateName == null || !stateName.startsWith('authorizationState')) {
+        throw StateError('پاسخ وضعیت نشست معتبر نیست.');
+      }
+
+      if (stateName == expectedState) {
+        _emit(TelegramAuthStatus(
+          TelegramAuthStage.error,
+          message: '$failureMessage برای جلوگیری از توقف بی‌پایان، اتصال متوقف شد. می‌توانی دوباره تلاش کنی.',
+        ));
+        return;
+      }
+
+      _handleAuthorizationState(stateName);
+    } catch (error) {
+      _emit(TelegramAuthStatus(
+        TelegramAuthStage.error,
+        message: '$failureMessage پاسخ نهایی تلگرام دریافت نشد: $error',
+      ));
+    }
+  }
+
   Future<void> _sendTdlibParameters() async {
+    if (_sendingParameters) return;
+    _sendingParameters = true;
+
     try {
       final supportDirectory = await getApplicationSupportDirectory()
           .timeout(const Duration(seconds: 15));
@@ -552,31 +718,27 @@ class TelegramTdlibService {
         'application_version': '1.2.0',
         'enable_storage_optimizer': true,
         'ignore_file_names': false,
-      }, timeout: const Duration(seconds: 45));
+      }, timeout: const Duration(seconds: 30));
 
-      _emit(const TelegramAuthStatus(
-        TelegramAuthStage.initializing,
-        message: 'تنظیمات ثبت شد؛ در حال برقراری ارتباط با تلگرام…',
-      ));
-
-      // Read the state once more in case the corresponding update arrived
-      // before the request response was processed.
-      final authorization = await _request(
-        'getAuthorizationState',
-        const {},
-        timeout: const Duration(seconds: 15),
-      );
-      final stateName = authorization['@type']?.toString();
-      if (stateName != null &&
-          stateName.startsWith('authorizationState') &&
-          stateName != 'authorizationStateWaitTdlibParameters') {
-        _handleAuthorizationState(stateName);
+      if (_lastAuthorizationState ==
+          'authorizationStateWaitTdlibParameters') {
+        _emit(const TelegramAuthStatus(
+          TelegramAuthStage.initializing,
+          message: 'تنظیمات پذیرفته شد؛ در حال بازیابی نشست ذخیره‌شده…',
+        ));
+        _scheduleAuthorizationProbe(
+          expectedState: 'authorizationStateWaitTdlibParameters',
+          failureMessage: 'تلگرام تنظیمات را پذیرفت، اما وضعیت ورود از مرحله راه‌اندازی عبور نکرد.',
+        );
       }
     } catch (error) {
+      _tdlibParametersSent = false;
       _emit(TelegramAuthStatus(
         TelegramAuthStage.error,
-        message: 'تنظیمات اتصال تلگرام پذیرفته نشد یا پاسخ دریافت نشد: $error',
+        message: 'ارسال تنظیمات اولیه به تلگرام ناموفق بود: $error',
       ));
+    } finally {
+      _sendingParameters = false;
     }
   }
 
@@ -585,6 +747,9 @@ class TelegramTdlibService {
     Map<String, dynamic> parameters, {
     Duration timeout = const Duration(seconds: 45),
   }) async {
+    if (_disposed) {
+      throw StateError('سرویس تلگرام بسته شده است.');
+    }
     final commandPort = _workerCommandPort;
     if (commandPort == null) {
       throw StateError('اتصال تلگرام هنوز آماده نیست.');
@@ -594,17 +759,19 @@ class TelegramTdlibService {
     final completer = Completer<Map<String, dynamic>>();
     _pending[requestId] = completer;
 
-    commandPort.send({
-      '@type': type,
-      ...parameters,
-      '@extra': requestId,
-    });
-
     try {
+      commandPort.send({
+        '@type': type,
+        ...parameters,
+        '@extra': requestId,
+      });
       return await completer.future.timeout(timeout);
     } on TimeoutException {
       _pending.remove(requestId);
       throw TimeoutException('پاسخ تلگرام برای درخواست $type دریافت نشد.');
+    } catch (_) {
+      _pending.remove(requestId);
+      rethrow;
     }
   }
 
@@ -615,22 +782,42 @@ class TelegramTdlibService {
   }
 
   Future<void> _stopWorker() async {
+    _authorizationProbeTimer?.cancel();
+    _authorizationProbeTimer = null;
+
+    final worker = _worker;
     final commandPort = _workerCommandPort;
-    if (commandPort != null) {
-      commandPort.send({'__stop': true});
+
+    if (worker != null) {
+      if (commandPort != null) {
+        _workerStopping = true;
+        _workerStopped ??= Completer<void>();
+        try {
+          commandPort.send({'__stop': true});
+          await _workerStopped!.future.timeout(const Duration(seconds: 6));
+        } on TimeoutException {
+          worker.kill(priority: Isolate.immediate);
+        } catch (_) {
+          worker.kill(priority: Isolate.immediate);
+        }
+      } else {
+        worker.kill(priority: Isolate.immediate);
+      }
     }
+
     _workerCommandPort = null;
     await _workerSubscription?.cancel();
     _workerSubscription = null;
     _workerReceivePort?.close();
     _workerReceivePort = null;
-    _worker?.kill(priority: Isolate.immediate);
     _worker = null;
+    _workerReady = null;
+    _workerStopped = null;
+    _workerStopping = false;
 
+    final closedError = StateError('اتصال تلگرام بسته شد.');
     for (final completer in _pending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('اتصال تلگرام بسته شد.'));
-      }
+      if (!completer.isCompleted) completer.completeError(closedError);
     }
     _pending.clear();
   }
@@ -646,27 +833,43 @@ class TelegramTdlibService {
 @pragma('vm:entry-point')
 Future<void> _tdlibWorkerMain(Map<String, dynamic> bootstrap) async {
   final mainPort = bootstrap['mainPort'] as SendPort;
+  ReceivePort? commandPort;
+  var stopRequested = false;
 
   try {
     await TdPlugin.initialize();
     final clientId = TdPlugin.instance.tdCreateClientId();
-    final commandPort = ReceivePort();
-    Timer? receiveTimer;
+    commandPort = ReceivePort();
 
     commandPort.listen((dynamic message) {
       if (message is! Map) return;
       final command = Map<String, dynamic>.from(message);
+
       if (command['__stop'] == true) {
-        receiveTimer?.cancel();
-        TdPlugin.instance.tdSend(
-          clientId,
-          jsonEncode({'@type': 'close'}),
-        );
-        commandPort.close();
+        if (stopRequested) return;
+        stopRequested = true;
+        try {
+          TdPlugin.instance.tdSend(
+            clientId,
+            jsonEncode({'@type': 'close'}),
+          );
+        } catch (error) {
+          mainPort.send({
+            'kind': 'workerError',
+            'message': 'ارسال فرمان بستن TDLib ناموفق بود: $error',
+          });
+        }
         return;
       }
 
-      TdPlugin.instance.tdSend(clientId, jsonEncode(command));
+      try {
+        TdPlugin.instance.tdSend(clientId, jsonEncode(command));
+      } catch (error) {
+        mainPort.send({
+          'kind': 'workerError',
+          'message': 'ارسال درخواست به TDLib ناموفق بود: $error',
+        });
+      }
     });
 
     mainPort.send({
@@ -674,28 +877,32 @@ Future<void> _tdlibWorkerMain(Map<String, dynamic> bootstrap) async {
       'commandPort': commandPort.sendPort,
     });
 
-    receiveTimer = Timer.periodic(
-      const Duration(milliseconds: 60),
-      (_) {
-        try {
-          final raw = TdPlugin.instance.tdReceive(0.05);
-          if (raw == null || raw.isEmpty) return;
-          final decoded = jsonDecode(raw);
-          if (decoded is Map<String, dynamic>) {
-            mainPort.send(decoded);
-          }
-        } catch (error) {
-          mainPort.send({
-            'kind': 'workerError',
-            'message': error.toString(),
-          });
-        }
-      },
-    );
+    // Use one receive loop for this TDLib client. tdReceive is blocking for
+    // at most one second, so command-port events are still serviced regularly.
+    while (true) {
+      final raw = TdPlugin.instance.tdReceive(1);
+      if (raw == null || raw.isEmpty) continue;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) continue;
+
+      mainPort.send(decoded);
+
+      final authorization = decoded['authorization_state'];
+      final isClosed = decoded['@type'] == 'updateAuthorizationState' &&
+          authorization is Map &&
+          authorization['@type'] == 'authorizationStateClosed';
+      if (stopRequested && isClosed) break;
+    }
+
+    commandPort.close();
+    mainPort.send({'kind': 'stopped'});
   } catch (error, stackTrace) {
     mainPort.send({
       'kind': 'workerError',
       'message': '$error\n$stackTrace',
     });
+  } finally {
+    commandPort?.close();
   }
 }

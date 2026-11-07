@@ -15,6 +15,7 @@ final class FeedRepositoryImpl implements FeedRepository {
   String? _cachedChannelKey;
   DateTime? _fetchedAt;
   bool _hasStaleData = false;
+  Future<void> _refreshQueue = Future<void>.value();
 
   @override
   Future<FeedPage> getPage({
@@ -48,6 +49,17 @@ final class FeedRepositoryImpl implements FeedRepository {
   Future<void> _refresh(
     List<TelegramChannel> channels,
     String channelKey,
+  ) {
+    final next = _refreshQueue
+        .catchError((Object _) {})
+        .then((_) => _refreshInternal(channels, channelKey));
+    _refreshQueue = next;
+    return next;
+  }
+
+  Future<void> _refreshInternal(
+    List<TelegramChannel> channels,
+    String channelKey,
   ) async {
     if (channels.isEmpty) {
       _cachedPosts = const [];
@@ -58,7 +70,13 @@ final class FeedRepositoryImpl implements FeedRepository {
       return;
     }
 
-    final results = await Future.wait(channels.map(_fetchOne));
+    // TDLib uses one ordered receive loop. Fetch channels sequentially so
+    // a refresh never floods the single native client with concurrent history
+    // requests, especially immediately after a channel has been added.
+    final results = <_ChannelFetchResult>[];
+    for (final channel in channels) {
+      results.add(await _fetchOne(channel));
+    }
     final successfulResults =
         results.where((result) => result.failure == null).toList();
     final failures = results
