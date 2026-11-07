@@ -124,7 +124,7 @@ class _AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'نسخه ۱.۱.۰',
+            'نسخه ۱.۲.۱',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,

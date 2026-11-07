@@ -66,6 +66,7 @@ class TelegramTdlibService {
   SendPort? _workerCommandPort;
   Completer<void>? _workerReady;
   int _nextRequestId = 0;
+  int _authorizationUpdateVersion = 0;
   int? _apiId;
   String? _apiHash;
   String? _databaseEncryptionKey;
@@ -429,18 +430,24 @@ class TelegramTdlibService {
 
       // TDLib starts with authorizationStateWaitTdlibParameters. This query
       // is a fallback in case the first update arrived before the UI listener.
+      final versionBeforeQuery = _authorizationUpdateVersion;
       final authorization = await _request(
         'getAuthorizationState',
         const {},
         timeout: const Duration(seconds: 20),
       );
-      final stateName = authorization['@type']?.toString();
-      if (stateName == null || !stateName.startsWith('authorizationState')) {
-        throw StateError(
-          'پاسخ وضعیت ورود از تلگرام معتبر نبود: ${authorization['@type']}',
-        );
+      // An authorization update received while this request is pending is
+      // newer than the query result. Do not overwrite the live state with it.
+      if (_authorizationUpdateVersion == versionBeforeQuery) {
+        final stateName = authorization['@type']?.toString();
+        if (stateName == null ||
+            !stateName.startsWith('authorizationState')) {
+          throw StateError(
+            'پاسخ وضعیت ورود از تلگرام معتبر نبود: ${authorization['@type']}',
+          );
+        }
+        _handleAuthorizationState(stateName);
       }
-      _handleAuthorizationState(stateName);
     } on TimeoutException catch (error) {
       await _stopWorker();
       _emit(TelegramAuthStatus(
@@ -524,6 +531,7 @@ class TelegramTdlibService {
       final stateName = authState is Map
           ? authState['@type']?.toString() ?? ''
           : '';
+      _authorizationUpdateVersion++;
       _handleAuthorizationState(stateName);
     }
   }
@@ -666,12 +674,17 @@ class TelegramTdlibService {
   }) async {
     if (_disposed || _status.stage != TelegramAuthStage.initializing) return;
 
+    final versionBeforeQuery = _authorizationUpdateVersion;
     try {
       final authorization = await _request(
         'getAuthorizationState',
         const {},
         timeout: const Duration(seconds: 15),
       );
+
+      // A pushed update is authoritative if it arrives during this probe.
+      if (_authorizationUpdateVersion != versionBeforeQuery) return;
+
       final stateName = authorization['@type']?.toString();
       if (stateName == null || !stateName.startsWith('authorizationState')) {
         throw StateError('پاسخ وضعیت نشست معتبر نیست.');
@@ -715,7 +728,7 @@ class TelegramTdlibService {
         'system_language_code': 'fa',
         'device_model': 'Android',
         'system_version': '',
-        'application_version': '1.2.0',
+        'application_version': '1.2.1',
         'enable_storage_optimizer': true,
         'ignore_file_names': false,
       }, timeout: const Duration(seconds: 30));
