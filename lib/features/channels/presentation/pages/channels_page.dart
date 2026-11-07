@@ -61,7 +61,7 @@ class ChannelsPage extends ConsumerWidget {
                     builder: (dialogContext) => AlertDialog(
                       title: const Text('حذف کانال'),
                       content: Text(
-                        'کانال «\${channel.title}» از فهرست حذف شود؟',
+                        'کانال «${channel.title}» از فهرست حذف شود؟',
                       ),
                       actions: [
                         TextButton(
@@ -229,7 +229,7 @@ class _ChannelTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         subtitle: Text(
-          '@\${channel.username}',
+          '@${channel.username}',
           textDirection: TextDirection.ltr,
         ),
         trailing: SizedBox(

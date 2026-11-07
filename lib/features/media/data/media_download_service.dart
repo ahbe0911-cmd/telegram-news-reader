@@ -15,12 +15,12 @@ final class MediaDownloadService {
     void Function(int received, int total)? onReceiveProgress,
   }) async {
     final appDirectory = await getApplicationDocumentsDirectory();
-    final mediaDirectory = Directory('\${appDirectory.path}/offline_media');
+    final mediaDirectory = Directory('${appDirectory.path}/offline_media');
     await mediaDirectory.create(recursive: true);
 
     final fileName = _safeFileName(attachment);
     final target = File(
-      '\${mediaDirectory.path}/\${_stableHash(attachment.url)}_\$fileName',
+      '${mediaDirectory.path}/${_stableHash(attachment.url)}_$fileName',
     );
 
     if (await target.exists() && await target.length() > 0) {

@@ -62,7 +62,7 @@ class PostCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '@\${post.channelUsername}',
+                        '@${post.channelUsername}',
                         textDirection: TextDirection.ltr,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colors.onSurfaceVariant,
@@ -147,7 +147,7 @@ class PostCard extends StatelessWidget {
               LinearProgressIndicator(value: downloadProgress),
               const SizedBox(height: 4),
               Text(
-                'در حال دانلود \${(downloadProgress! * 100).round()}٪',
+                'در حال دانلود ${(downloadProgress! * 100).round()}٪',
                 style: theme.textTheme.labelSmall,
               ),
             ],
@@ -160,12 +160,12 @@ class PostCard extends StatelessWidget {
   String _relativeDate(DateTime date) {
     final difference = DateTime.now().difference(date.toLocal());
     if (difference.inMinutes < 1) return 'همین حالا';
-    if (difference.inHours < 1) return '\${difference.inMinutes} دقیقه پیش';
-    if (difference.inDays < 1) return '\${difference.inHours} ساعت پیش';
-    if (difference.inDays < 7) return '\${difference.inDays} روز پیش';
+    if (difference.inHours < 1) return '${difference.inMinutes} دقیقه پیش';
+    if (difference.inDays < 1) return '${difference.inHours} ساعت پیش';
+    if (difference.inDays < 7) return '${difference.inDays} روز پیش';
 
     final local = date.toLocal();
-    return '\${local.year}/\${local.month.toString().padLeft(2, '0')}/\${local.day.toString().padLeft(2, '0')}';
+    return '${local.year}/${local.month.toString().padLeft(2, '0')}/${local.day.toString().padLeft(2, '0')}';
   }
 }
 
