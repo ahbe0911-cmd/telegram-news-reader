@@ -1,6 +1,7 @@
 import 'package:isar_community/isar.dart';
 
 import '../../../feed/domain/entities/post.dart';
+import '../../domain/entities/bookmark.dart';
 
 part 'bookmark_record.g.dart';
 
@@ -91,6 +92,22 @@ class BookmarkRecord {
       permalink: permalink,
       publishedAt: publishedAt,
       attachments: attachments.map((media) => media.toAttachment()).toList(),
+    );
+  }
+
+  Bookmark toEntity() {
+    final localPaths = <String, String>{};
+    for (final media in attachments) {
+      final path = media.localPath;
+      if (path != null && path.isNotEmpty) {
+        localPaths[media.url] = path;
+      }
+    }
+
+    return Bookmark(
+      post: toPost(),
+      savedAt: savedAt,
+      localMediaPaths: localPaths,
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../features/bookmarks/data/models/bookmark_record.dart';
 import '../../features/bookmarks/data/repositories/bookmark_repository_impl.dart';
+import '../../features/bookmarks/domain/entities/bookmark.dart';
 import '../../features/bookmarks/domain/repositories/bookmark_repository.dart';
 import '../../features/channels/data/models/telegram_channel_record.dart';
 import '../../features/channels/data/repositories/channel_repository_impl.dart';
@@ -90,7 +91,7 @@ Future<ChannelRepository> channelRepository(Ref ref) async {
 }
 
 @Riverpod(keepAlive: true)
-Stream<List<BookmarkRecord>> savedBookmarks(Ref ref) async* {
+Stream<List<Bookmark>> savedBookmarks(Ref ref) async* {
   final repository = await ref.watch(bookmarkRepositoryProvider.future);
   yield* repository.watchAll();
 }

@@ -1,14 +1,20 @@
 import '../../../feed/domain/entities/post.dart';
-import '../../data/models/bookmark_record.dart';
+import '../entities/bookmark.dart';
 
 abstract interface class BookmarkRepository {
-  Future<List<BookmarkRecord>> getAll();
+  Future<List<Bookmark>> getAll();
 
-  Stream<List<BookmarkRecord>> watchAll();
+  Stream<List<Bookmark>> watchAll();
 
   Future<bool> contains(String postId);
 
   Future<void> save(Post post);
+
+  Future<void> updateAttachmentLocalPath({
+    required String postId,
+    required String attachmentUrl,
+    required String? localPath,
+  });
 
   Future<void> remove(String postId);
 }
