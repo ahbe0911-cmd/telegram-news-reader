@@ -5,6 +5,7 @@ import 'core/theme/app_theme.dart';
 import 'features/bookmarks/presentation/pages/bookmarks_page.dart';
 import 'features/channels/presentation/pages/channels_page.dart';
 import 'features/feed/presentation/pages/feed_page.dart';
+import 'features/telegram/presentation/telegram_auth_gate.dart';
 
 class TelegramNewsReaderApp extends StatelessWidget {
   const TelegramNewsReaderApp({super.key});
@@ -25,7 +26,7 @@ class TelegramNewsReaderApp extends StatelessWidget {
         textDirection: TextDirection.rtl,
         child: child ?? const SizedBox.shrink(),
       ),
-      home: const MainShell(),
+      home: const TelegramAuthGate(),
     );
   }
 }

@@ -46,6 +46,11 @@ jobs:
           fi
           mkdir -p android/app/src/main
           cp tool/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
+          fi
 
       - name: Install dependencies
         run: flutter pub get
