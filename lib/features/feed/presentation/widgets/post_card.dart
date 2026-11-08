@@ -78,7 +78,7 @@ class PostCard extends StatelessWidget {
                       ),
                       Text(
                         post.channelUsername.startsWith('chat_')
-                            ? 'کانال خصوصی' : '@' + post.channelUsername,
+                            ? 'کانال خصوصی' : '@${post.channelUsername}',
                         textDirection: post.channelUsername.startsWith('chat_')
                             ? TextDirection.rtl : TextDirection.ltr,
                         maxLines: 1,
@@ -199,7 +199,7 @@ class PostCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: Text(
-                'در حال دانلود ' + (downloadProgress! * 100).round().toString() + '٪',
+                'در حال دانلود ${(downloadProgress! * 100).round()}٪',
                 style: AppTypography.secondary,
               ),
             ),
@@ -247,6 +247,7 @@ class _AttachmentPreview extends ConsumerStatefulWidget {
     required this.attachment,
     this.localPath,
     this.hero = false,
+    super.key,
   });
 
   final PostAttachment attachment;
