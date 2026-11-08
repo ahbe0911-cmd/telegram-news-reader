@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: telepulse-universal-${ github.ref }
+  group: telepulse-universal-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -65,10 +65,10 @@ jobs:
 
       - name: Configure signing key
         env:
-          RELEASE_KEY_B64: ${ secrets.TELEPULSE_KEYSTORE_BASE64 }
-          RELEASE_KEY_PASSWORD: ${ secrets.TELEPULSE_KEYSTORE_PASSWORD }
-          RELEASE_KEY_ALIAS: ${ secrets.TELEPULSE_KEY_ALIAS }
-          RELEASE_KEY_ENTRY_PASSWORD: ${ secrets.TELEPULSE_KEY_PASSWORD }
+          RELEASE_KEY_B64: ${{ secrets.TELEPULSE_KEYSTORE_BASE64 }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.TELEPULSE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.TELEPULSE_KEY_ALIAS }}
+          RELEASE_KEY_ENTRY_PASSWORD: ${{ secrets.TELEPULSE_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
@@ -163,8 +163,8 @@ jobs:
 
       - name: Publish verified direct download
         env:
-          GH_TOKEN: ${ github.token }
-          GH_REPO: ${ github.repository }
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
