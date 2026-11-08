@@ -10,4 +10,12 @@ void main() {
     expect(theme.scaffoldBackgroundColor, isNot(Colors.white));
     expect(theme.colorScheme.primary, isNot(Colors.transparent));
   });
+
+  test('editorial and interface fonts map to four distinct families', () {
+    expect(AppTypography.newsHeadline.fontFamily, 'Titr');
+    expect(AppTypography.newsBody.fontFamily, 'Rooznameh');
+    expect(AppTypography.secondary.fontFamily, 'Nazanin');
+    expect(AppTypography.ui.fontFamily, 'Vazir');
+    expect(AppTheme.light.appBarTheme.titleTextStyle?.fontFamily, 'Vazir');
+  });
 }

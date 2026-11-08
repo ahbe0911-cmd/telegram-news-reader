@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../../../core/theme/app_theme.dart';
+
 class FeedLoadingSkeleton extends StatelessWidget {
   const FeedLoadingSkeleton({super.key, this.itemCount = 4});
 
@@ -8,81 +10,62 @@ class FeedLoadingSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
-    final highlight = Theme.of(context).colorScheme.surface;
-
     return Shimmer.fromColors(
-      baseColor: base,
-      highlightColor: highlight,
+      baseColor: const Color(0xFFDDE4F7),
+      highlightColor: Colors.white,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 26),
         itemCount: itemCount,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) => Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
+        separatorBuilder: (_, _) => const SizedBox(height: 18),
+        itemBuilder: (context, index) => Card(
+          elevation: 0,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const CircleAvatar(radius: 19, backgroundColor: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Row(
+                  children: [
+                    const CircleAvatar(radius: 20, backgroundColor: AppPalette.outline),
+                    const SizedBox(width: 12),
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          height: 12,
-                          width: 130,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        _line(135, 13),
                         const SizedBox(height: 8),
-                        Container(
-                          height: 9,
-                          width: 82,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
+                        _line(78, 10),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Container(
-                height: 13,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  ],
                 ),
               ),
-              const SizedBox(height: 9),
-              Container(
-                height: 13,
-                width: MediaQuery.sizeOf(context).width * 0.68,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _line(double.infinity, 20),
+                    const SizedBox(height: 8),
+                    _line(206, 20),
+                  ],
                 ),
               ),
-              const SizedBox(height: 18),
-              Container(
-                height: 116,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+              const AspectRatio(
+                aspectRatio: 16 / 9,
+                child: ColoredBox(color: AppPalette.outline),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _line(double.infinity, 14),
+                    const SizedBox(height: 10),
+                    _line(192, 14),
+                    const SizedBox(height: 16),
+                    _line(105, 22),
+                  ],
                 ),
               ),
             ],
@@ -91,4 +74,13 @@ class FeedLoadingSkeleton extends StatelessWidget {
       ),
     );
   }
+
+  Widget _line(double width, double height) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: AppPalette.outline,
+          borderRadius: BorderRadius.circular(9),
+        ),
+      );
 }

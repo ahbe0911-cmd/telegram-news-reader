@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../domain/entities/post.dart';
 import '../../domain/entities/feed_page.dart' as feed_models;
 import '../widgets/feed_loading_skeleton.dart';
@@ -86,7 +87,22 @@ class _FeedPageState extends ConsumerState<FeedPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('خبرخوان تلگرام'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppPalette.primary, AppPalette.violet],
+                ),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 21),
+            ),
+            const SizedBox(width: 12),
+            const Text('نبض خبرها'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'به‌روزرسانی خبرها',
@@ -97,8 +113,9 @@ class _FeedPageState extends ConsumerState<FeedPage> {
       ),
       body: Column(
         children: [
+          _FeedHero(onOpenChannels: widget.onOpenChannels),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 15),
             child: TextField(
               controller: _searchController,
               onChanged: (value) => setState(() => _query = value.trim()),
@@ -150,9 +167,9 @@ class _FeedPageState extends ConsumerState<FeedPage> {
 
                   return ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
                     itemCount: filtered.length + (showFooter ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    separatorBuilder: (_, _) => const SizedBox(height: 19),
                     itemBuilder: (context, index) {
                       if (index == filtered.length) {
                         if (_loadingMore) {
@@ -400,6 +417,73 @@ class _EmptyMessage extends StatelessWidget {
               ),
         ),
       ],
+    );
+  }
+}
+
+
+class _FeedHero extends StatelessWidget {
+  const _FeedHero({required this.onOpenChannels});
+
+  final VoidCallback onOpenChannels;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      padding: const EdgeInsets.symmetric(horizontal: 19, vertical: 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [AppPalette.primary, AppPalette.violet],
+        ),
+        borderRadius: BorderRadius.circular(23),
+        boxShadow: [
+          BoxShadow(
+            color: AppPalette.primary.withValues(alpha: 0.20),
+            blurRadius: 22,
+            offset: const Offset(0, 9),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'خبرها، یک‌جا و زنده',
+                  style: TextStyle(
+                    fontFamily: AppTypography.vazir,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'تازه‌ترین پست‌های کانال‌های شما',
+                  style: AppTypography.ui.copyWith(
+                    color: Colors.white.withValues(alpha: 0.83),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: onOpenChannels,
+            tooltip: 'مدیریت کانال‌ها',
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.18),
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.tune_rounded),
+          ),
+        ],
+      ),
     );
   }
 }
