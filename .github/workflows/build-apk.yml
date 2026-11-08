@@ -1,24 +1,22 @@
-name: Build Telegram News Reader APK
+name: Build TelePulse Universal APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: telegram-news-reader-${{ github.ref }}
+  group: telepulse-universal-${ github.ref }
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Android Release APK
+    name: Build verified universal Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 50
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,59 +33,156 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Verify Flutter installation
-        run: |
-          flutter --version
-          flutter doctor -v
-
       - name: Generate Android platform scaffold
         run: |
+          set -euo pipefail
           if [ ! -f android/gradlew ]; then
-            flutter create --platforms=android \
-              --project-name telegram_news_reader \
-              --org com.example \
-              --no-pub .
+            flutter create --platforms=android --project-name telegram_news_reader --org com.example --no-pub .
           fi
           mkdir -p android/app/src/main
           cp tool/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
-          elif [ -f android/app/build.gradle ]; then
-            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
+          else
+            echo "::error::Kotlin Gradle template expected. Fix tool/configure_android_release.py for your Flutter version."
+            exit 1
           fi
+          python3 tool/configure_android_release.py
 
-      - name: Set up Python for launcher icon
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Generate branded launcher icons
+      - name: Create source images and ALL Android launcher icons
         run: |
-          python -m pip install pillow
-          python tool/generate_launcher_icons.py
+          set -euo pipefail
+          python3 -m pip install pillow
+          python3 tool/generate_launcher_icons.py
+          bash tool/prepare_fonts.sh
+          flutter pub get
+          dart run flutter_launcher_icons
+          test -s assets/icon/app_icon.png
+          test -s assets/icon/app_icon_foreground.png
+          test -s assets/icon/app_icon_monochrome.png
+          test -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
-      - name: Prepare bundled Persian font
-        run: bash tool/prepare_fonts.sh
-
-      - name: Install dependencies
-        run: flutter pub get
+      - name: Configure signing key
+        env:
+          RELEASE_KEY_B64: ${ secrets.TELEPULSE_KEYSTORE_BASE64 }
+          RELEASE_KEY_PASSWORD: ${ secrets.TELEPULSE_KEYSTORE_PASSWORD }
+          RELEASE_KEY_ALIAS: ${ secrets.TELEPULSE_KEY_ALIAS }
+          RELEASE_KEY_ENTRY_PASSWORD: ${ secrets.TELEPULSE_KEY_PASSWORD }
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android
+          KEYSTORE="$RUNNER_TEMP/telepulse-release.jks"
+          if [ -n "$RELEASE_KEY_B64" ]; then
+            if [ -z "$RELEASE_KEY_PASSWORD" ] || [ -z "$RELEASE_KEY_ENTRY_PASSWORD" ] || [ -z "$RELEASE_KEY_ALIAS" ]; then
+              echo "::error::All four TELEPULSE_KEYSTORE_* / TELEPULSE_KEY_* GitHub secrets must be set."
+              exit 1
+            fi
+            printf '%s' "$RELEASE_KEY_B64" | base64 --decode > "$KEYSTORE"
+            chmod 600 "$KEYSTORE"
+            SIGNING_MODE=persistent
+          else
+            if [ -n "$RELEASE_KEY_PASSWORD$RELEASE_KEY_ENTRY_PASSWORD$RELEASE_KEY_ALIAS" ]; then
+              echo "::error::The keystore secret is missing, but other signing secrets are set."
+              exit 1
+            fi
+            echo "::warning::NO PERSISTENT KEY: this APK is installation-test ONLY. Each run uses a new signing certificate. Existing builds must be uninstalled first."
+            RELEASE_KEY_PASSWORD="$(openssl rand -hex 20)"
+            RELEASE_KEY_ENTRY_PASSWORD="$RELEASE_KEY_PASSWORD"
+            RELEASE_KEY_ALIAS=telepulse_test
+            keytool -genkeypair -noprompt -storetype PKCS12 \
+              -keystore "$KEYSTORE" -storepass "$RELEASE_KEY_PASSWORD" \
+              -alias "$RELEASE_KEY_ALIAS" -keypass "$RELEASE_KEY_ENTRY_PASSWORD" \
+              -keyalg RSA -keysize 3072 -validity 3650 \
+              -dname "CN=TelePulse CI test build, OU=Testing, O=TelePulse"
+            SIGNING_MODE=temporary
+          fi
+          # Values are never echoed to workflow logs or checked into git.
+          export KEYSTORE RELEASE_KEY_PASSWORD RELEASE_KEY_ENTRY_PASSWORD RELEASE_KEY_ALIAS
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          def escaped(value):
+              return value.replace('\\', '\\\\').replace('\n','\\n').replace('=', '\\=').replace(':', '\\:')
+          props = {
+              'storeFile': os.environ['KEYSTORE'],
+              'storePassword': os.environ['RELEASE_KEY_PASSWORD'],
+              'keyAlias': os.environ['RELEASE_KEY_ALIAS'],
+              'keyPassword': os.environ['RELEASE_KEY_ENTRY_PASSWORD'],
+          }
+          path=Path('android/key.properties')
+          path.write_text(''.join(f'{k}={escaped(v)}\n' for k,v in props.items()),encoding='utf-8')
+          path.chmod(0o600)
+          PY
+          echo "TELEPULSE_SIGNING_MODE=$SIGNING_MODE" >> "$GITHUB_ENV"
 
       - name: Generate Isar and Riverpod code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Analyze source
+      - name: Analyze code
         run: flutter analyze
 
       - name: Run tests
         run: flutter test
 
-      - name: Build release APK
-        run: flutter build apk --release --split-per-abi
+      - name: Build Universal Release APK for all three ABIs
+        run: |
+          flutter build apk --release --target-platform android-arm,android-arm64,android-x64
 
-      - name: Upload APK files
+      - name: Verify v1/v2 signatures, APK identity, icon and ABIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee signing-verification.txt
+          grep -Fq 'Verified using v1 scheme (JAR signing): true' signing-verification.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signing-verification.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt | grep -E "^package:|^application-label:"
+          grep -Fq "versionName='1.8.0'" apk-badging.txt
+          grep -Fq "application-label:'TelePulse'" apk-badging.txt
+          unzip -Z1 "$APK" > apk-contents.txt
+          for arch in armeabi-v7a arm64-v8a x86_64; do
+            grep -Fxq "lib/$arch/libflutter.so" apk-contents.txt
+          done
+          sha256sum "$APK" | tee apk-sha256.txt
+
+      - name: Upload universal APK and verification
         uses: actions/upload-artifact@v4
         with:
-          name: telegram-news-reader-apks
-          path: build/app/outputs/flutter-apk/*-release.apk
+          name: TelePulse-1.8.0-Universal-APK
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            signing-verification.txt
+            apk-badging.txt
+            apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish verified direct download
+        env:
+          GH_TOKEN: ${ github.token }
+          GH_REPO: ${ github.repository }
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$TELEPULSE_SIGNING_MODE" = persistent ]; then
+            TAG="v1.8.0"
+            FILE="TelePulse-v1.8.0-Universal.apk"
+            PRERELEASE=""
+          else
+            TAG="v1.8.0-install-test"
+            FILE="TelePulse-v1.8.0-Universal-INSTALL-TEST.apk"
+            PRERELEASE="--prerelease"
+          fi
+          cp build/app/outputs/flutter-apk/app-release.apk "$FILE"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" \
+              --target "$GITHUB_SHA" $PRERELEASE \
+              --title "TelePulse 1.8.0 Universal ($TELEPULSE_SIGNING_MODE signing)" \
+              --notes "Universal Android APK with ARMv7, ARM64 and x86_64. Verified v1/v2 signatures and updated icon. If installed from older GitHub Actions APKs, uninstall the old app first. Temporary signing builds are NOT update-compatible; configure a permanent private release keystore for production."
+          fi

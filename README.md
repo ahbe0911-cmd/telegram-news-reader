@@ -224,3 +224,122 @@ flutter build apk --release --split-per-abi
 
 ARM64 output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk.
 Use your own release signing key for public store distribution.
+
+## TelePulse 1.8.0: Android installation / signing / icon fix
+
+### Why old APKs failed to update
+
+Previous CI runs used **new runner debug signing certificates** on every build.
+Android correctly refuses an in-place update when the APK has a different
+signing certificate. v1.8.0 does NOT change the application ID, so the
+previous app must be uninstalled once before installing the newly signed APK.
+Warning: uninstalling can erase TDLib login, saved news and local settings.
+Back up anything important and have your Telegram login available.
+
+Version is centrally defined in pubspec.yaml as `1.8.0+10`.
+Flutter maps 1.8.0 to Android versionName and 10 to versionCode.
+
+### Icon: repeatable Android launcher generation
+
+Run after scaffolding the Android project:
+
+```bash
+python3 -m pip install pillow
+python3 tool/generate_launcher_icons.py
+flutter pub get
+dart run flutter_launcher_icons
+```
+
+The script creates these **1024 x 1024 PNG** sources in assets/icon:
+
+- `app_icon.png` (opaque legacy icon)
+- `app_icon_foreground.png` (transparent adaptive foreground)
+- `app_icon_background.png` (adaptive full-size background)
+- `app_icon_monochrome.png` (white-on-transparent Android 13+ theme icon)
+
+pubspec.yaml configures flutter_launcher_icons ^0.14.4 to generate all
+mipmap density resources and adaptive XML. If using your own icon artwork,
+replace the source PNGs after the Python step and run the Dart icon generator.
+An intentional re-install is necessary to confirm the launcher refresh.
+
+### Signing (production and future update compatibility)
+
+**Never commit .jks, .keystore, or android/key.properties to the repository.**
+The build patches Flutter's generated android/app/build.gradle.kts using:
+
+```bash
+python3 tool/configure_android_release.py
+```
+
+Create a permanent keystore yourself and save a backup somewhere safe:
+
+```bash
+keytool -genkeypair -v -storetype PKCS12 -keystore "$HOME/telepulse-release.jks" \
+  -alias telepulse -keyalg RSA -keysize 3072 -validity 10000
+```
+
+Then create `android/key.properties` on your computer (NOT in git):
+
+```properties
+storeFile=/absolute/path/to/telepulse-release.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=telepulse
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+For GitHub CI builds, set these four GitHub Actions repository secrets:
+
+- TELEPULSE_KEYSTORE_BASE64 = base64 -w0 "$HOME/telepulse-release.jks"
+- TELEPULSE_KEYSTORE_PASSWORD
+- TELEPULSE_KEY_ALIAS = telepulse
+- TELEPULSE_KEY_PASSWORD
+
+To set secrets: GitHub repository Settings > Secrets and variables > Actions >
+New repository secret. Then every CI build can be signed using the same key.
+WITHOUT those secrets, CI creates a TEST-only key for that build (different
+on the next run). Such APKs require uninstalling the previous APK and are
+NOT suitable for release updates or the Play Store.
+
+### Exact universal release build commands (Linux / WSL)
+
+```bash
+git clone https://github.com/ahbe0911-cmd/telegram-news-reader.git
+cd telegram-news-reader
+flutter create --platforms=android --project-name telegram_news_reader --org com.example --no-pub .
+mkdir -p android/app/src/main
+cp tool/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts
+python3 tool/configure_android_release.py
+python3 -m pip install pillow
+python3 tool/generate_launcher_icons.py
+bash tool/prepare_fonts.sh
+flutter pub get
+dart run flutter_launcher_icons
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
+# Requires a private android/key.properties as documented above
+flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+```
+
+The **universal APK** is located at:
+`build/app/outputs/flutter-apk/app-release.apk`.
+
+Verify the signature and both v1/v2 schemes:
+
+```bash
+"$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" \
+  verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk
+```
+
+To identify a device install failure, use:
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+```
+
+If adb returns INSTALL_FAILED_UPDATE_INCOMPATIBLE, the installed app has
+a different signing key and must be removed before installing this package.
+Android may reject installation for other reasons including insufficient
+storage, insufficient SDK version, device policy or a corrupt download.
+

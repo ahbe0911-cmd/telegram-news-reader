@@ -83,6 +83,9 @@ def main():
                                              radius=170, fill=255)
     merged.putalpha(rounded)
     save_png(merged, ROOT / "assets" / "icon" / "app_icon.png", 1024)
+    # Source images consumed by flutter_launcher_icons (NOT final mipmaps).
+    save_png(fg, ROOT / "assets" / "icon" / "app_icon_foreground.png", 1024)
+    save_png(bg, ROOT / "assets" / "icon" / "app_icon_background.png", 1024)
 
     densities = {"mdpi": 48, "hdpi": 72, "xhdpi": 96,
                  "xxhdpi": 144, "xxxhdpi": 192}
@@ -101,6 +104,7 @@ def main():
                         fill=(255, 255, 255, 255))
     d.polygon([(214, 290), (664, 138), (502, 561), (435, 389)],
               fill=(255, 255, 255, 255))
+    save_png(mono, ROOT / "assets" / "icon" / "app_icon_monochrome.png", 1024)
     save_png(mono, ANDROID / "drawable-nodpi" /
              "ic_launcher_monochrome.png", 432)
     adaptive = ANDROID / "mipmap-anydpi-v26"
@@ -115,7 +119,8 @@ def main():
     )
     (adaptive / "ic_launcher.xml").write_text(config, encoding="utf-8")
     (adaptive / "ic_launcher_round.xml").write_text(config, encoding="utf-8")
-    print("Generated all legacy and adaptive launcher icons.")
+    print("Generated 1024x1024 source PNGs and legacy/adaptive mipmaps.")
+    print("Run: dart run flutter_launcher_icons to refresh Android launcher resources.")
 
 
 if __name__ == "__main__":
