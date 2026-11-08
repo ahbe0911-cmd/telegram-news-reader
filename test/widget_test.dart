@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:telegram_news_reader/core/theme/app_theme.dart';
+import 'package:telegram_news_reader/features/media/presentation/pages/image_viewer_page.dart';
 import 'package:telegram_news_reader/core/theme/channel_accent.dart';
 import 'package:telegram_news_reader/features/feed/domain/entities/post.dart';
 import 'package:telegram_news_reader/features/feed/presentation/widgets/post_card.dart';
@@ -29,6 +30,11 @@ void main() {
     expect(ChannelAccent.forSource('financial_market'), isNot(a));
   });
 
+  test('lightbox is a stateful fullscreen photo viewer', () {
+    const viewer = ImageViewerPage(url: 'https://example.com/image.jpg');
+    expect(viewer, isA<StatefulWidget>());
+  });
+
   testWidgets('news preview is compact and expands when tapped', (tester) async {
     final post = Post(
       id: 'test:1',
@@ -37,6 +43,7 @@ void main() {
       title: 'یک تیتر آزمایشی',
       content: List.filled(40, 'متن خبر').join(' '),
       sourceUrl: 'https://example.com',
+      publishedAt: DateTime(2026, 11, 8, 12),
     );
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
@@ -50,6 +57,7 @@ void main() {
     expect(texts.first.style.fontFamily, 'Titr');
     expect(texts.first.style.fontSize, inInclusiveRange(18, 20));
     expect(texts.last.maxLines, 2);
+    expect(find.text('۱۴۰۵/۰۸/۱۷'), findsOneWidget);
     await tester.tap(find.text('ادامه خبر'));
     await tester.pump();
     final expanded = tester.widgetList<NewsLinkText>(find.byType(NewsLinkText)).toList();

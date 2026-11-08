@@ -2,7 +2,7 @@ name: telegram_news_reader
 description: A Persian RTL Flutter reader for public Telegram channel posts.
 publish_to: 'none'
 
-version: 1.5.0+7
+version: 1.6.0+8
 
 environment:
   sdk: '>=3.13.0 <4.0.0'
@@ -35,6 +35,7 @@ dependencies:
   path_provider: ^2.1.6
   shimmer: ^4.0.0
   intl: ^0.20.3
+  shamsi_date: ^1.1.1
   url_launcher: ^6.3.3
   webview_flutter: ^4.13.0
   shared_preferences: ^2.5.3

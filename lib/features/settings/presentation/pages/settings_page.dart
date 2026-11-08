@@ -61,7 +61,7 @@ class SettingsPage extends StatelessWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
                 title: Text('خبرخوان تلگرام'),
-                subtitle: Text('نسخه ۱.۵.۰؛ اتصال مستقیم به تلگرام'),
+                subtitle: Text('نسخه ۱.۶.۰؛ اتصال مستقیم به تلگرام'),
               ),
               const Divider(height: 1),
               ListTile(

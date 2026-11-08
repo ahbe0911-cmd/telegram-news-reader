@@ -144,3 +144,39 @@ flutter build apk --release --split-per-abi
 ```
 
 ARM64 output: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`.
+
+
+## Media and Persian dates (1.6.0)
+
+- Each image thumbnail is tappable; HTTP(S) images open directly without forcing a download.
+- Telegram images already downloading automatically queue the open action instead of
+  silently ignoring taps. Downloaded Telegram images open from the TDLib local path.
+- The lightbox uses InteractiveViewer (pinch to zoom 1x–5x, pan),
+  a close button, and downward single-finger dismissal when not zoomed.
+  TransformationController and image routes are disposed on close.
+- Media tiles have distinct play and download actions. Video opens the existing
+  Chewie full-screen player with a timeline. Audio opens a dedicated full-screen
+  player with play/pause and seek controls. Controllers pause when the app
+  backgrounds and are disposed when routes close.
+- PDF attachments continue to use the built-in flutter_cached_pdfview reader.
+  TDLib PDFs download to app storage before opening; HTTP PDF URLs can open in-app.
+- Exact Shamsi dates are calculated from device-local DateTime with shamsi_date
+  and shown below the relative time using Persian numerals in Nazanin.
+
+### Build instructions
+
+```bash
+flutter create --platforms=android --project-name telegram_news_reader --org com.example --no-pub .
+mkdir -p android/app/src/main
+cp tool/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+python3 -m pip install pillow
+python3 tool/generate_launcher_icons.py
+bash tool/prepare_fonts.sh
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
+flutter build apk --release --split-per-abi
+```
+
+Find the 64-bit APK under build/app/outputs/flutter-apk/app-arm64-v8a-release.apk.

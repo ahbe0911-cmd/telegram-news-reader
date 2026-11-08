@@ -378,6 +378,150 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
         ));
       });
     }
+    if (attachment.type == PostAttachmentType.video) {
+      return SizedBox(
+        width: 290,
+        child: Material(
+          color: AppPalette.ink,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: _openAttachment,
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (attachment.thumbnailUrl != null)
+                    CachedNetworkImage(
+                      imageUrl: attachment.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, _, _) => const SizedBox.shrink(),
+                    )
+                  else
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppPalette.ink, AppPalette.primary],
+                        ),
+                      ),
+                    ),
+                  Center(
+                    child: _busy
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Icon(
+                            Icons.play_circle_fill_rounded,
+                            size: 55,
+                            color: Colors.white,
+                          ),
+                  ),
+                  PositionedDirectional(
+                    start: 12,
+                    bottom: 10,
+                    child: Text(
+                      'پخش ویدئو',
+                      style: AppTypography.ui.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  PositionedDirectional(
+                    end: 6,
+                    bottom: 3,
+                    child: IconButton(
+                      tooltip: 'دانلود ویدئو',
+                      onPressed: _busy ? null : () => _fetch(openAfter: false),
+                      icon: const Icon(Icons.download_rounded, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (attachment.type == PostAttachmentType.audio) {
+      return SizedBox(
+        width: 290,
+        child: Material(
+          color: const Color(0xFFEAEFFF),
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: _openAttachment,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              child: Row(
+                children: [
+                  _busy
+                      ? const SizedBox(
+                          width: 37,
+                          height: 37,
+                          child: Padding(
+                            padding: EdgeInsets.all(6),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.play_circle_fill_rounded,
+                          color: AppPalette.primary,
+                          size: 37,
+                        ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          attachment.fileName ?? 'پیام صوتی',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.ui.copyWith(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            for (final size in <double>[8, 14, 11, 20, 13, 17, 9, 14])
+                              Container(
+                                width: 3,
+                                height: size,
+                                margin: const EdgeInsets.only(left: 3),
+                                decoration: BoxDecoration(
+                                  color: AppPalette.primary.withValues(alpha: 0.52),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            const SizedBox(width: 7),
+                            Text(
+                              'پخش',
+                              style: AppTypography.secondary.copyWith(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'دانلود فایل صوتی',
+                    onPressed: _busy ? null : () => _fetch(openAfter: false),
+                    icon: const Icon(
+                      Icons.download_rounded,
+                      color: AppPalette.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: const Color(0xFFF0F3FF),
       borderRadius: BorderRadius.circular(12),
