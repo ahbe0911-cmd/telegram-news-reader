@@ -7,6 +7,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../../../core/settings/app_settings.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/channel_accent.dart';
 import '../../../media/data/media_download_service.dart';
 import '../../../media/presentation/pages/audio_preview_page.dart';
 import '../../../media/presentation/pages/image_viewer_page.dart';
@@ -60,23 +61,31 @@ class _PostCardState extends State<PostCard> {
     final hero = images.isNotEmpty && settings.showImages ? images.first : null;
     final remaining = post.attachments.where((a) => a != hero).toList();
     final p = settings.compactCards ? 12.0 : 17.0;
+    final accent = ChannelAccent.forSource(post.channelUsername);
 
     return Card(
       elevation: settings.compactCards ? 2 : 3,
+      shadowColor: accent.withValues(alpha: 0.16),
+      color: ChannelAccent.tint(post.channelUsername),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+        side: BorderSide(color: accent.withValues(alpha: 0.22)),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => setState(() => _expanded = !_expanded),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SizedBox(height: 3, child: ColoredBox(color: accent)),
             Padding(
               padding: EdgeInsets.fromLTRB(p, p, p, 8),
               child: Row(children: [
                 Container(
                   width: 34, height: 34,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppPalette.primary, AppPalette.violet]),
-                    borderRadius: BorderRadius.circular(11)),
+                    color: accent,
+                    borderRadius: BorderRadius.circular(10)),
                   child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 8),
@@ -85,7 +94,9 @@ class _PostCardState extends State<PostCard> {
                   children: [
                     Text(post.channelTitle, maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.ui.copyWith(fontWeight: FontWeight.w800, fontSize: 13)),
+                      style: AppTypography.ui.copyWith(
+                        fontWeight: FontWeight.w800, fontSize: 13,
+                        color: accent)),
                     Text(post.channelUsername.startsWith('chat_')
                         ? 'کانال خصوصی' : '@${post.channelUsername}',
                       textDirection: post.channelUsername.startsWith('chat_')
@@ -93,8 +104,8 @@ class _PostCardState extends State<PostCard> {
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: AppTypography.secondary.copyWith(fontSize: 12)),
                   ])),
-                if (post.publishedAt != null)
-                  Text(_relativeDate(post.publishedAt!),
+                if (post.sortTimestamp != null)
+                  Text(_relativeDate(post.sortTimestamp!),
                     style: AppTypography.secondary.copyWith(fontSize: 12)),
               ]),
             ),
@@ -104,8 +115,11 @@ class _PostCardState extends State<PostCard> {
                 child: NewsLinkText(
                   text: title,
                   style: AppTypography.newsHeadline.copyWith(
-                    fontSize: 18 * settings.newsTextScale, height: 1.35),
-                  maxLines: _expanded ? null : (body.isEmpty ? 3 : 1),
+                    fontFamily: AppTypography.titr,
+                    fontSize: 19 * settings.newsTextScale,
+                    fontWeight: FontWeight.w700,
+                    height: 1.42),
+                  maxLines: _expanded ? null : 3,
                   overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
                 ),
               ),
@@ -193,11 +207,15 @@ class _PostCardState extends State<PostCard> {
 
   String _firstLine(String full) {
     final value = full.trim();
-    if (value.length <= 85) return value;
-    var stop = value.indexOf(RegExp(r'[؟.!؟\n]'));
-    if (stop < 25 || stop > 85) stop = value.lastIndexOf(' ', 85);
-    if (stop < 25) stop = 85;
-    return value.substring(0, stop).trim();
+    // TDLib posts have no separate headline. Prefer a complete first
+    // sentence/line rather than truncating the headline at 85 characters.
+    final boundary = value.indexOf(RegExp(r'[؟.!\n]'));
+    if (boundary >= 18 && boundary < 190) {
+      return value.substring(0, boundary + 1).trim();
+    }
+    if (value.length <= 170) return value;
+    final stop = value.lastIndexOf(' ', 170);
+    return value.substring(0, stop >= 50 ? stop : 170).trim();
   }
 
   String _relativeDate(DateTime date) {

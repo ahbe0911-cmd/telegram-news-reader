@@ -3,12 +3,22 @@ import '../../../channels/domain/entities/telegram_channel.dart';
 import '../../domain/entities/feed_page.dart';
 import '../../domain/entities/post.dart';
 import '../../domain/repositories/feed_repository.dart';
+import '../../domain/utils/post_ordering.dart';
 import '../datasources/telegram_tdlib_remote_data_source.dart';
 
 final class FeedRepositoryImpl implements FeedRepository {
-  FeedRepositoryImpl({required this._remoteDataSource});
+  /// Bounded parallel I/O; TDLib itself continues to use its one receive loop.
+  FeedRepositoryImpl({
+    TelegramTdlibRemoteDataSource? remoteDataSource,
+    Future<List<Post>> Function(TelegramChannel)? fetchChannel,
+    int maxConcurrentChannels = 3,
+  })  : assert(remoteDataSource != null || fetchChannel != null),
+        assert(maxConcurrentChannels > 0),
+        _fetchChannel = fetchChannel ?? remoteDataSource!.fetchChannel,
+        _maxConcurrentChannels = maxConcurrentChannels;
 
-  final TelegramTdlibRemoteDataSource _remoteDataSource;
+  final Future<List<Post>> Function(TelegramChannel) _fetchChannel;
+  final int _maxConcurrentChannels;
 
   List<Post> _cachedPosts = const [];
   List<FeedSourceFailure> _lastFailures = const [];
@@ -70,16 +80,26 @@ final class FeedRepositoryImpl implements FeedRepository {
       return;
     }
 
-    // TDLib uses one ordered receive loop. Fetch channels sequentially so
-    // a refresh never floods the single native client with concurrent history
-    // requests, especially immediately after a channel has been added.
-    final results = <_ChannelFetchResult>[];
-    for (final channel in channels) {
-      results.add(await _fetchOne(channel));
+    // At most three channel pipelines overlap. Each TDLib request carries
+    // its own @extra ID, so responses are correlated without blocking the
+    // receive loop. A small fixed pool avoids request floods on weak phones.
+    final results = List<_ChannelFetchResult?>.filled(channels.length, null);
+    var cursor = 0;
+    Future<void> worker() async {
+      while (cursor < channels.length) {
+        final index = cursor++;
+        results[index] = await _fetchOne(channels[index]);
+      }
     }
+
+    final workerCount = channels.length < _maxConcurrentChannels
+        ? channels.length
+        : _maxConcurrentChannels;
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+    final completedResults = results.whereType<_ChannelFetchResult>().toList();
     final successfulResults =
-        results.where((result) => result.failure == null).toList();
-    final failures = results
+        completedResults.where((result) => result.failure == null).toList();
+    final failures = completedResults
         .where((result) => result.failure != null)
         .map(
           (result) => FeedSourceFailure(
@@ -125,7 +145,7 @@ final class FeedRepositoryImpl implements FeedRepository {
     }
 
     final mergedPosts = mergedById.values.toList()
-      ..sort(_compareNewestFirst);
+      ..sort(comparePostsNewestFirst);
 
     _cachedPosts = List.unmodifiable(mergedPosts);
     _lastFailures = failures;
@@ -136,7 +156,7 @@ final class FeedRepositoryImpl implements FeedRepository {
 
   Future<_ChannelFetchResult> _fetchOne(TelegramChannel channel) async {
     try {
-      final posts = await _remoteDataSource.fetchChannel(channel);
+      final posts = await _fetchChannel(channel);
       return _ChannelFetchResult(
         channelUsername: channel.username,
         posts: posts,
@@ -181,21 +201,7 @@ final class FeedRepositoryImpl implements FeedRepository {
     return usernames.join(',');
   }
 
-  int _compareNewestFirst(Post first, Post second) {
-    final firstDate = first.publishedAt;
-    final secondDate = second.publishedAt;
 
-    if (firstDate == null && secondDate == null) {
-      return first.id.compareTo(second.id);
-    }
-    if (firstDate == null) return 1;
-    if (secondDate == null) return -1;
-
-    final dateComparison = secondDate.compareTo(firstDate);
-    return dateComparison != 0
-        ? dateComparison
-        : first.id.compareTo(second.id);
-  }
 }
 
 final class _ChannelFetchResult {

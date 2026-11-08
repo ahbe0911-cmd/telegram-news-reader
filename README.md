@@ -106,3 +106,41 @@ flutter analyze
 flutter test
 flutter build apk --release --split-per-abi
 ```
+
+## Unified live feed (1.5.0)
+
+The home feed merges posts across all enabled channels, deduplicates them by
+message ID, and orders by the most recent timestamp (Telegram edit time when
+available, otherwise the original publication time). Undated messages appear
+after timestamped posts.
+
+Channel history requests use a **bounded pool of three concurrent fetches**.
+The native TDLib worker still uses a single receive loop and correlates each
+response with its request ID. This avoids unlimited request floods while
+making unrelated channel requests overlap.
+
+The feed listens for TDLib new-message and edited-message updates and
+debounces refreshes. A 35-second poll while the feed is visible provides
+fallback updates for public channels that do not issue push events to this
+Telegram account. As with any network app, delivery depends on connectivity
+and Telegram; this does not guarantee zero-delay updates.
+
+Each source has a deterministic accent color, and editorial headlines use the
+bundled Titr font at 19 logical pixels with up to three visible lines. Tap to
+expand a longer headline and the accompanying article text.
+
+### Release APK commands
+
+```bash
+flutter create --platforms=android --project-name telegram_news_reader --org com.example --no-pub .
+python3 -m pip install pillow
+python3 tool/generate_launcher_icons.py
+bash tool/prepare_fonts.sh
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
+flutter build apk --release --split-per-abi
+```
+
+ARM64 output: `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`.

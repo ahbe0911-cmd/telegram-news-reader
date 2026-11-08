@@ -35,6 +35,7 @@ final class Post {
     required this.content,
     required this.sourceUrl,
     this.publishedAt,
+    this.updatedAt,
     this.permalink,
     List<PostAttachment> attachments = const [],
   }) : attachments = List.unmodifiable(attachments);
@@ -46,6 +47,14 @@ final class Post {
   final String content;
   final String sourceUrl;
   final DateTime? publishedAt;
+  /// Telegram edit timestamp, if the original message was modified.
+  final DateTime? updatedAt;
+  /// Most recently changed timestamp for unified chronological ordering.
+  DateTime? get sortTimestamp =>
+      updatedAt != null &&
+              (publishedAt == null || updatedAt!.isAfter(publishedAt!))
+          ? updatedAt
+          : publishedAt;
   final String? permalink;
   final List<PostAttachment> attachments;
 

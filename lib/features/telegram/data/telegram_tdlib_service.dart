@@ -55,6 +55,10 @@ class TelegramTdlibService {
   final FlutterSecureStorage _storage;
   final StreamController<TelegramAuthStatus> _statusController =
       StreamController<TelegramAuthStatus>.broadcast();
+  // Lightweight change notifications; the existing TDLib worker remains
+  // the sole owner of the native client and its ordered receive loop.
+  final StreamController<int> _changedChatIds =
+      StreamController<int>.broadcast();
 
   final Map<int, Completer<Map<String, dynamic>>> _pending = {};
   TelegramAuthStatus _status =
@@ -83,6 +87,8 @@ class TelegramTdlibService {
 
   TelegramAuthStatus get status => _status;
   Stream<TelegramAuthStatus> get statusStream => _statusController.stream;
+  /// Channel message/edition updates received by the authenticated TDLib client.
+  Stream<int> get changedChatIds => _changedChatIds.stream;
   bool get isAuthorized => _status.stage == TelegramAuthStage.ready;
 
   Future<void> restore() async {
@@ -534,6 +540,20 @@ class TelegramTdlibService {
       _authorizationUpdateVersion++;
       _handleAuthorizationState(stateName);
     }
+
+    // Only signal the UI. TDLib requests remain correlated via @extra above.
+    final kind = data['@type'];
+    if (kind == 'updateNewMessage' ||
+        kind == 'updateMessageEdited' ||
+        kind == 'updateMessageContent') {
+      final message = data['message'];
+      final chatId = kind == 'updateNewMessage' && message is Map
+          ? (message['chat_id'] as num?)?.toInt()
+          : (data['chat_id'] as num?)?.toInt();
+      if (chatId != null && !_changedChatIds.isClosed) {
+        _changedChatIds.add(chatId);
+      }
+    }
   }
 
   void _reportWorkerFailure(String message) {
@@ -840,6 +860,7 @@ class TelegramTdlibService {
     _disposed = true;
     await _stopWorker();
     await _statusController.close();
+    await _changedChatIds.close();
   }
 }
 

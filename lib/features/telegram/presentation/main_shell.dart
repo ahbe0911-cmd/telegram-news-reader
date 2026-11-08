@@ -25,7 +25,10 @@ class _MainShellState extends State<MainShell> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          FeedPage(onOpenChannels: _openChannels),
+          FeedPage(
+            onOpenChannels: _openChannels,
+            isActive: _selectedIndex == 0,
+          ),
           const ChannelsPage(),
           const BookmarksPage(),
           const SettingsPage(),

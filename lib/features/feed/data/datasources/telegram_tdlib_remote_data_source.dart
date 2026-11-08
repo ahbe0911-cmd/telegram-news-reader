@@ -64,6 +64,13 @@ final class TelegramTdlibRemoteDataSource {
             dateSeconds * 1000,
             isUtc: true,
           );
+    final editSeconds = (message['edit_date'] as num?)?.toInt();
+    final updatedAt = editSeconds == null || editSeconds <= 0
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(
+            editSeconds * 1000,
+            isUtc: true,
+          );
     final content = _asMap(message['content']);
     final contentType = content['@type']?.toString() ?? '';
     final attachments = <PostAttachment>[];
@@ -161,6 +168,7 @@ final class TelegramTdlibRemoteDataSource {
       content: text,
       sourceUrl: 'tdlib://chat/$chatId',
       publishedAt: date,
+      updatedAt: updatedAt,
       permalink: permalink,
       attachments: attachments,
     );

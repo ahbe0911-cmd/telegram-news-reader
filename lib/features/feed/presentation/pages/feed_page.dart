@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/providers.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/settings/app_settings.dart';
+import '../../../telegram/telegram_providers.dart';
+import '../../domain/utils/post_ordering.dart';
 import '../../domain/entities/post.dart';
 import '../../domain/entities/feed_page.dart' as feed_models;
 import '../widgets/feed_loading_skeleton.dart';
@@ -12,27 +16,42 @@ import '../widgets/post_card.dart';
 class FeedPage extends ConsumerStatefulWidget {
   const FeedPage({
     required this.onOpenChannels,
+    this.isActive = true,
     super.key,
   });
 
   final VoidCallback onOpenChannels;
+  final bool isActive;
 
   @override
   ConsumerState<FeedPage> createState() => _FeedPageState();
 }
 
-class _FeedPageState extends ConsumerState<FeedPage> {
+class _FeedPageState extends ConsumerState<FeedPage>
+    with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final List<Post> _additionalPosts = [];
   String _query = '';
   bool _loadingMore = false;
   bool _endReached = false;
   String? _loadMoreError;
+  int _pageGeneration = 0;
+  bool _refreshInFlight = false;
+  bool _foreground = true;
+  Set<int> _enabledChatIds = {};
+  StreamSubscription<int>? _chatChanges;
+  Timer? _periodicRefresh;
+  Timer? _updateDebounce;
+  DateTime? _lastAutomaticRefresh;
 
   @override
   void initState() {
     super.initState();
     AppSettings.instance.addListener(_handleSettingsChange);
+    WidgetsBinding.instance.addObserver(this);
+    _chatChanges = ref.read(telegramTdlibServiceProvider)
+        .changedChatIds.listen(_onTelegramChatChanged);
+    _configurePolling();
   }
 
   void _handleSettingsChange() {
@@ -40,24 +59,97 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   }
 
   @override
+  void didUpdateWidget(covariant FeedPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive != widget.isActive) {
+      _configurePolling();
+      if (widget.isActive) {
+        _lastAutomaticRefresh = null;
+        unawaited(_autoRefresh());
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _configurePolling();
+    if (_foreground && widget.isActive) {
+      _lastAutomaticRefresh = null;
+      unawaited(_autoRefresh());
+    }
+  }
+
+  void _configurePolling() {
+    _periodicRefresh?.cancel();
+    _periodicRefresh = null;
+    if (widget.isActive && _foreground) {
+      // Fallback for channels whose messages do not produce push updates
+      // (e.g., public channels the account has not joined).
+      _periodicRefresh = Timer.periodic(
+        const Duration(seconds: 35),
+        (_) => unawaited(_autoRefresh()),
+      );
+    } else {
+      _updateDebounce?.cancel();
+      _updateDebounce = null;
+    }
+  }
+
+  void _onTelegramChatChanged(int chatId) {
+    if (!mounted || !_foreground || !widget.isActive ||
+        !_enabledChatIds.contains(chatId)) return;
+    _updateDebounce?.cancel();
+    _updateDebounce = Timer(
+      const Duration(milliseconds: 1200),
+      () => unawaited(_autoRefresh()),
+    );
+  }
+
+  Future<void> _autoRefresh() async {
+    if (!mounted || !_foreground || !widget.isActive || _refreshInFlight) return;
+    final now = DateTime.now();
+    if (_lastAutomaticRefresh != null &&
+        now.difference(_lastAutomaticRefresh!) < const Duration(seconds: 7)) {
+      return;
+    }
+    _lastAutomaticRefresh = now;
+    await _refreshFeed();
+  }
+
+  @override
   void dispose() {
+    _periodicRefresh?.cancel();
+    _updateDebounce?.cancel();
+    unawaited(_chatChanges?.cancel());
+    WidgetsBinding.instance.removeObserver(this);
     AppSettings.instance.removeListener(_handleSettingsChange);
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _refreshFeed() async {
+    if (_refreshInFlight || !mounted) return;
+    _refreshInFlight = true;
     setState(() {
+      _pageGeneration++;
       _additionalPosts.clear();
       _loadingMore = false;
       _endReached = false;
       _loadMoreError = null;
     });
-    await ref.refresh(feedPageProvider().future).then((_) {});
+    try {
+      await ref.refresh(feedPageProvider().future);
+    } catch (_) {
+      // The provider exposes the source errors to the feed/error UI.
+    } finally {
+      _refreshInFlight = false;
+    }
   }
 
   Future<void> _loadMore(int offset) async {
-    if (_loadingMore || _endReached) return;
+    if (_loadingMore || _endReached || _refreshInFlight) return;
+    final generation = _pageGeneration;
 
     setState(() {
       _loadingMore = true;
@@ -69,7 +161,7 @@ class _FeedPageState extends ConsumerState<FeedPage> {
         feedPageProvider(offset: offset).future,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _pageGeneration) return;
 
       final knownIds = _additionalPosts.map((post) => post.id).toSet();
       setState(() {
@@ -79,17 +171,27 @@ class _FeedPageState extends ConsumerState<FeedPage> {
         _endReached = !page.hasMore;
       });
     } catch (error) {
-      if (mounted) {
+      if (mounted && generation == _pageGeneration) {
         setState(() => _loadMoreError = error.toString());
       }
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && generation == _pageGeneration) {
+        setState(() => _loadingMore = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final feed = ref.watch(feedPageProvider());
+    _enabledChatIds = ref.watch(telegramChannelsProvider).when(
+      data: (items) => items
+          .where((channel) => channel.enabled && channel.chatId != null)
+          .map((channel) => channel.chatId!)
+          .toSet(),
+      loading: () => _enabledChatIds,
+      error: (error, stack) => _enabledChatIds,
+    );
     final saved = ref.watch(savedBookmarksProvider);
     final savedIds = saved.when(
       data: (items) => items.map((item) => item.post.id).toSet(),
@@ -142,10 +244,14 @@ class _FeedPageState extends ConsumerState<FeedPage> {
               onRefresh: _refreshFeed,
               child: feed.when(
                 data: (page) {
-                  final posts = [
-                    ...page.posts,
-                    ..._additionalPosts,
-                  ];
+                  // Additional pages and newly refreshed headlines share
+                  // the same global newest-first ordering and unique IDs.
+                  final uniquePosts = <String, Post>{
+                    for (final post in [...page.posts, ..._additionalPosts])
+                      post.id: post,
+                  };
+                  final posts = uniquePosts.values.toList()
+                    ..sort(comparePostsNewestFirst);
 
                   if (posts.isEmpty && page.hasSourceFailures) {
                     return _FeedSourceErrors(

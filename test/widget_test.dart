@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:telegram_news_reader/core/theme/app_theme.dart';
+import 'package:telegram_news_reader/core/theme/channel_accent.dart';
 import 'package:telegram_news_reader/features/feed/domain/entities/post.dart';
 import 'package:telegram_news_reader/features/feed/presentation/widgets/post_card.dart';
 import 'package:telegram_news_reader/features/feed/presentation/widgets/news_link_text.dart';
@@ -22,6 +23,12 @@ void main() {
     expect(AppTheme.light.appBarTheme.titleTextStyle?.fontFamily, 'Vazir');
   });
 
+  test('channel accent is stable and varies across channel IDs', () {
+    final a = ChannelAccent.forSource('technology_news');
+    expect(ChannelAccent.forSource('technology_news'), a);
+    expect(ChannelAccent.forSource('financial_market'), isNot(a));
+  });
+
   testWidgets('news preview is compact and expands when tapped', (tester) async {
     final post = Post(
       id: 'test:1',
@@ -39,6 +46,9 @@ void main() {
     ));
     final texts = tester.widgetList<NewsLinkText>(find.byType(NewsLinkText)).toList();
     expect(texts.length, 2);
+    expect(texts.first.maxLines, 3);
+    expect(texts.first.style.fontFamily, 'Titr');
+    expect(texts.first.style.fontSize, inInclusiveRange(18, 20));
     expect(texts.last.maxLines, 2);
     await tester.tap(find.text('ادامه خبر'));
     await tester.pump();
