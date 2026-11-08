@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../../../core/settings/app_settings.dart';
+import '../../../../core/formatters/persian_news_date.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/channel_accent.dart';
 import '../../../media/data/media_download_service.dart';
@@ -105,8 +106,29 @@ class _PostCardState extends State<PostCard> {
                       style: AppTypography.secondary.copyWith(fontSize: 12)),
                   ])),
                 if (post.sortTimestamp != null)
-                  Text(_relativeDate(post.sortTimestamp!),
-                    style: AppTypography.secondary.copyWith(fontSize: 12)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        PersianNewsDate.relative(post.sortTimestamp!),
+                        textAlign: TextAlign.left,
+                        textDirection: TextDirection.rtl,
+                        style: AppTypography.secondary.copyWith(fontSize: 12),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        PersianNewsDate.exact(post.sortTimestamp!),
+                        textAlign: TextAlign.left,
+                        textDirection: TextDirection.ltr,
+                        style: AppTypography.secondary.copyWith(
+                          fontFamily: AppTypography.nazanin,
+                          fontSize: 13,
+                          color: AppPalette.muted,
+                        ),
+                      ),
+                    ],
+                  ),
               ]),
             ),
             if (title.isNotEmpty)
@@ -218,15 +240,7 @@ class _PostCardState extends State<PostCard> {
     return value.substring(0, stop >= 50 ? stop : 170).trim();
   }
 
-  String _relativeDate(DateTime date) {
-    final elapsed = DateTime.now().difference(date.toLocal());
-    if (elapsed.inMinutes < 1) return 'همین حالا';
-    if (elapsed.inHours < 1) return '${elapsed.inMinutes} دقیقه پیش';
-    if (elapsed.inDays < 1) return '${elapsed.inHours} ساعت پیش';
-    if (elapsed.inDays < 7) return '${elapsed.inDays} روز پیش';
-    final local = date.toLocal();
-    return '${local.year}/${local.month}/${local.day}';
-  }
+
 }
 
 class _MediaTile extends ConsumerStatefulWidget {
@@ -243,6 +257,7 @@ class _MediaTile extends ConsumerStatefulWidget {
 class _MediaTileState extends ConsumerState<_MediaTile> {
   String? _cachedPath;
   bool _busy = false;
+  bool _openWhenReady = false;
   String? _error;
 
   @override
@@ -257,7 +272,10 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
   }
 
   Future<void> _fetch({required bool openAfter}) async {
-    if (_busy) return;
+    if (_busy) {
+      if (openAfter) _openWhenReady = true;
+      return;
+    }
     final existing = widget.localPath ?? _cachedPath;
     if (existing != null && await File(existing).exists()) {
       if (openAfter && mounted) await _preview(existing);
@@ -284,8 +302,12 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
       }
       if (!mounted) return;
       setState(() => _cachedPath = path);
-      if (openAfter) await _preview(path);
+      if (openAfter || _openWhenReady) {
+        _openWhenReady = false;
+        await _preview(path);
+      }
     } catch (error) {
+      _openWhenReady = false;
       if (mounted) {
         setState(() => _error = error.toString());
         ScaffoldMessenger.of(context).showSnackBar(
@@ -296,10 +318,49 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
     }
   }
 
+  Future<void> _openAttachment() async {
+    final attachment = widget.attachment;
+    final existing = widget.localPath ?? _cachedPath;
+    if (existing != null && await File(existing).exists()) {
+      if (mounted) await _preview(existing);
+      return;
+    }
+    if (!mounted) return;
+
+    if (attachment.telegramFileId == null) {
+      final url = Uri.tryParse(attachment.url);
+      if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
+        late final Widget destination;
+        if (attachment.type == PostAttachmentType.image) {
+          destination = ImageViewerPage(url: attachment.url);
+        } else if (attachment.type == PostAttachmentType.video) {
+          destination = VideoPlayerPage(url: attachment.url);
+        } else if (attachment.type == PostAttachmentType.audio) {
+          destination = AudioPreviewPage(url: attachment.url);
+        } else if (_isPdf) {
+          destination = PdfViewerPage(url: attachment.url, fileName: attachment.fileName);
+        } else {
+          await _fetch(openAfter: true);
+          return;
+        }
+        if (mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => destination),
+          );
+        }
+        return;
+      }
+    }
+    await _fetch(openAfter: true);
+  }
+
+  bool get _isPdf =>
+      widget.attachment.mimeType?.toLowerCase().contains('pdf') == true ||
+      widget.attachment.fileName?.toLowerCase().endsWith('.pdf') == true;
+
   Future<void> _preview(String path) async {
     final attachment = widget.attachment;
-    final isPdf = attachment.mimeType?.toLowerCase().contains('pdf') == true ||
-        attachment.fileName?.toLowerCase().endsWith('.pdf') == true;
+    final isPdf = _isPdf;
     late final Widget destination;
     if (attachment.type == PostAttachmentType.image) {
       destination = ImageViewerPage(url: '', localPath: path);
@@ -356,11 +417,22 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
                 Center(child: _busy
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Icon(Icons.image_outlined, color: Colors.white, size: 30)),
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _openAttachment,
+                    splashColor: Colors.white24,
+                    highlightColor: Colors.white10,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                ),
+              ),
               PositionedDirectional(
                 bottom: 6, end: 8,
                 child: IconButton.filledTonal(
                   tooltip: 'دانلود یا نمایش تصویر',
-                  onPressed: _busy ? null : () => _fetch(openAfter: true),
+                  onPressed: _openAttachment,
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.white.withValues(alpha: 0.90),
                     foregroundColor: AppPalette.primary,
@@ -527,7 +599,7 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: _busy ? null : () => _fetch(openAfter: true),
+        onTap: _openAttachment,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 240),
           child: Padding(
@@ -548,7 +620,7 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                     padding: EdgeInsets.zero,
                     tooltip: 'دانلود و نمایش',
-                    onPressed: () => _fetch(openAfter: true),
+                    onPressed: _busy ? null : () => _fetch(openAfter: false),
                     icon: Icon((_cachedPath ?? widget.localPath) == null
                       ? Icons.download_rounded : Icons.visibility_rounded,
                       color: AppPalette.primary, size: 20),
