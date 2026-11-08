@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../widgets/save_to_device_button.dart';
 
 /// Internal fallback for plain-text documents and unsupported binary files.
 class LocalDocumentPreviewPage extends StatefulWidget {
@@ -42,8 +43,14 @@ class _LocalDocumentPreviewPageState extends State<LocalDocumentPreviewPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.fileName ?? 'فایل دانلودشده',
-      maxLines: 1, overflow: TextOverflow.ellipsis)),
+    appBar: AppBar(
+      title: Text(widget.fileName ?? 'فایل دانلودشده',
+        maxLines: 1, overflow: TextOverflow.ellipsis),
+      actions: [SaveToDeviceButton(
+        localPath: widget.path,
+        fileName: widget.fileName ?? widget.path.split('/').last,
+      )],
+    ),
     body: _text != null
         ? ListView(padding: const EdgeInsets.all(18),
             children: [SelectableText(_text!, style: AppTypography.newsBody)])

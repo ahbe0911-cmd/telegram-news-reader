@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppPalette {
-  static const primary = Color(0xFF4155D8);
-  static const violet = Color(0xFF7853D5);
-  static const coral = Color(0xFFFF725E);
-  static const mint = Color(0xFF12B8A6);
+  static const primary = Color(0xFF196DB8);
+  static const violet = Color(0xFF7161D4);
+  static const coral = Color(0xFF479DDD);
+  static const mint = Color(0xFF0DAFA9);
   static const ink = Color(0xFF17233B);
   static const muted = Color(0xFF65758D);
-  static const background = Color(0xFFF5F7FD);
-  static const outline = Color(0xFFE7ECF6);
+  static const background = Color(0xFFF2F8FC);
+  static const outline = Color(0xFFE0EDF4);
 }
 
 /// Use named editorial styles rather than changing widget chrome fonts.
@@ -95,7 +95,7 @@ abstract final class AppTheme {
         surfaceTintColor: Colors.transparent,
         elevation: 3,
         height: 66,
-        indicatorColor: const Color(0xFFE9E7FF),
+        indicatorColor: const Color(0xFFDDF4F8),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return ui.copyWith(

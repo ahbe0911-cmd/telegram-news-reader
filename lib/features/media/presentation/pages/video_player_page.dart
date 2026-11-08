@@ -3,16 +3,19 @@ import 'dart:io';
 import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../widgets/save_to_device_button.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({
     required this.url,
     this.localPath,
+    this.fileName,
     super.key,
   });
 
   final String url;
   final String? localPath;
+  final String? fileName;
 
   @override
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
@@ -80,6 +83,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: const Text('پخش ویدئو'),
+        actions: [
+          SaveToDeviceButton(
+            localPath: widget.localPath,
+            url: widget.localPath == null ? widget.url : null,
+            fileName: widget.fileName ?? 'video.mp4',
+            mimeType: 'video/mp4',
+            foregroundColor: Colors.white,
+          ),
+        ],
       ),
       body: Center(
         child: _error != null

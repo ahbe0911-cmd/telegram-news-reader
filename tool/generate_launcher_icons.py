@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an original, scalable news-reader Android launcher icon.
+"""Generate TelePulse blue/teal legacy, adaptive and themed launcher icons.
 
 Run after 'flutter create --platforms=android'.
 Requires Pillow. Writes Android legacy and adaptive resources.
@@ -21,14 +21,14 @@ def gradient_background():
             t = 0.60 * x / SIZE + 0.40 * (1 - y / SIZE)
             glow = max(0, 1 - hypot(x - 540, y - 170) / 530)
             px[x, y] = (
-                min(255, int(34 + t * 45 + glow * 5)),
-                min(255, int(68 + t * 24 + glow * 50)),
-                min(255, int(188 + t * 45 + glow * 2)), 255,
+                min(255, int(16 + t * 30 + glow * 5)),
+                min(255, int(88 + t * 55 + glow * 28)),
+                min(255, int(155 + t * 54 + glow * 18)), 255,
             )
     overlay = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     art = ImageDraw.Draw(overlay)
-    art.ellipse((430, -150, 900, 320), fill=(16, 216, 225, 74))
-    art.ellipse((-280, 490, 380, 1030), fill=(161, 64, 233, 90))
+    art.ellipse((430, -150, 900, 320), fill=(22, 210, 195, 90))
+    art.ellipse((-280, 490, 380, 1030), fill=(112, 101, 220, 77))
     overlay = overlay.filter(ImageFilter.GaussianBlur(76))
     return Image.alpha_composite(img, overlay)
 
@@ -44,7 +44,7 @@ def foreground():
 
     # News sheet: light paper, colored header, and journalistic columns.
     d.rounded_rectangle((151, 220, 557, 601), radius=48, fill=(255, 255, 255, 255))
-    d.rounded_rectangle((188, 262, 458, 296), radius=12, fill=(48, 100, 223, 255))
+    d.rounded_rectangle((188, 262, 458, 296), radius=12, fill=(25, 110, 183, 255))
     d.rounded_rectangle((188, 321, 495, 336), radius=7, fill=(177, 188, 215, 255))
     d.rounded_rectangle((188, 349, 486, 363), radius=7, fill=(197, 205, 225, 255))
     d.rounded_rectangle((188, 376, 410, 390), radius=7, fill=(197, 205, 225, 255))
@@ -94,6 +94,15 @@ def main():
     # Android 8+ adaptive icon: separate foreground and gradient background.
     save_png(fg, ANDROID / "drawable-nodpi" / "ic_launcher_foreground.png", 432)
     save_png(bg, ANDROID / "drawable-nodpi" / "ic_launcher_background.png", 432)
+    # Android 13+ monochrome adaptive launcher icon for themed home screens.
+    mono = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    d = ImageDraw.Draw(mono)
+    d.rounded_rectangle((150, 220, 558, 600), radius=48,
+                        fill=(255, 255, 255, 255))
+    d.polygon([(214, 290), (664, 138), (502, 561), (435, 389)],
+              fill=(255, 255, 255, 255))
+    save_png(mono, ANDROID / "drawable-nodpi" /
+             "ic_launcher_monochrome.png", 432)
     adaptive = ANDROID / "mipmap-anydpi-v26"
     adaptive.mkdir(parents=True, exist_ok=True)
     config = (
@@ -101,6 +110,7 @@ def main():
         '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
         '  <background android:drawable="@drawable/ic_launcher_background"/>\n'
         '  <foreground android:drawable="@drawable/ic_launcher_foreground"/>\n'
+        '  <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>\n'
         '</adaptive-icon>\n'
     )
     (adaptive / "ic_launcher.xml").write_text(config, encoding="utf-8")

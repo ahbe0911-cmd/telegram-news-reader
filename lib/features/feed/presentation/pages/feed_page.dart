@@ -216,7 +216,7 @@ class _FeedPageState extends ConsumerState<FeedPage>
               child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 21),
             ),
             const SizedBox(width: 12),
-            const Text('نبض خبرها'),
+            const Text('TelePulse'),
           ],
         ),
         actions: [

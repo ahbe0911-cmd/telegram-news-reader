@@ -13,6 +13,7 @@ import '../../../media/data/media_download_service.dart';
 import '../../../media/presentation/pages/audio_preview_page.dart';
 import '../../../media/presentation/pages/image_viewer_page.dart';
 import '../../../media/presentation/pages/local_document_preview_page.dart';
+import '../../../media/presentation/pages/office_document_viewer_page.dart';
 import '../../../media/presentation/pages/pdf_viewer_page.dart';
 import '../../../media/presentation/pages/video_player_page.dart';
 import '../../../telegram/telegram_providers.dart';
@@ -332,11 +333,11 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
       if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
         late final Widget destination;
         if (attachment.type == PostAttachmentType.image) {
-          destination = ImageViewerPage(url: attachment.url);
+          destination = ImageViewerPage(url: attachment.url, fileName: attachment.fileName);
         } else if (attachment.type == PostAttachmentType.video) {
-          destination = VideoPlayerPage(url: attachment.url);
+          destination = VideoPlayerPage(url: attachment.url, fileName: attachment.fileName);
         } else if (attachment.type == PostAttachmentType.audio) {
-          destination = AudioPreviewPage(url: attachment.url);
+          destination = AudioPreviewPage(url: attachment.url, fileName: attachment.fileName);
         } else if (_isPdf) {
           destination = PdfViewerPage(url: attachment.url, fileName: attachment.fileName);
         } else {
@@ -354,6 +355,12 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
     await _fetch(openAfter: true);
   }
 
+  bool get _isOffice =>
+      widget.attachment.fileName?.toLowerCase().endsWith('.docx') == true ||
+      widget.attachment.fileName?.toLowerCase().endsWith('.xlsx') == true ||
+      widget.attachment.mimeType?.toLowerCase().contains('wordprocessingml') == true ||
+      widget.attachment.mimeType?.toLowerCase().contains('spreadsheetml') == true;
+
   bool get _isPdf =>
       widget.attachment.mimeType?.toLowerCase().contains('pdf') == true ||
       widget.attachment.fileName?.toLowerCase().endsWith('.pdf') == true;
@@ -363,14 +370,24 @@ class _MediaTileState extends ConsumerState<_MediaTile> {
     final isPdf = _isPdf;
     late final Widget destination;
     if (attachment.type == PostAttachmentType.image) {
-      destination = ImageViewerPage(url: '', localPath: path);
+      destination = ImageViewerPage(url: '', localPath: path,
+          fileName: attachment.fileName);
     } else if (attachment.type == PostAttachmentType.video) {
-      destination = VideoPlayerPage(url: '', localPath: path);
+      destination = VideoPlayerPage(url: '', localPath: path,
+          fileName: attachment.fileName);
     } else if (attachment.type == PostAttachmentType.audio) {
-      destination = AudioPreviewPage(localPath: path);
+      destination = AudioPreviewPage(localPath: path,
+          fileName: attachment.fileName);
     } else if (isPdf) {
       destination = PdfViewerPage(
           url: '', localPath: path, fileName: attachment.fileName);
+    } else if (_isOffice) {
+      destination = OfficeDocumentViewerPage(
+        path: path,
+        fileName: attachment.fileName ??
+            (attachment.mimeType?.contains('spreadsheet') == true
+                ? 'document.xlsx' : 'document.docx'),
+      );
     } else {
       destination = LocalDocumentPreviewPage(
           path: path, fileName: attachment.fileName);

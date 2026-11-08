@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:telegram_news_reader/core/theme/app_theme.dart';
 import 'package:telegram_news_reader/features/media/presentation/pages/image_viewer_page.dart';
 import 'package:telegram_news_reader/core/theme/channel_accent.dart';
+import 'package:telegram_news_reader/features/media/presentation/pages/office_document_viewer_page.dart';
 import 'package:telegram_news_reader/features/feed/domain/entities/post.dart';
 import 'package:telegram_news_reader/features/feed/presentation/widgets/post_card.dart';
 import 'package:telegram_news_reader/features/feed/presentation/widgets/news_link_text.dart';
@@ -32,6 +33,14 @@ void main() {
 
   test('lightbox is a stateful fullscreen photo viewer', () {
     const viewer = ImageViewerPage(url: 'https://example.com/image.jpg');
+    expect(viewer, isA<StatefulWidget>());
+  });
+
+  test('Office viewer is an in-app read-only page', () {
+    const viewer = OfficeDocumentViewerPage(
+      path: '/fake/document.docx',
+      fileName: 'document.docx',
+    );
     expect(viewer, isA<StatefulWidget>());
   });
 

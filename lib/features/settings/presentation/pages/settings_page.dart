@@ -60,8 +60,8 @@ class SettingsPage extends StatelessWidget {
             Card(child: Column(children: [
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
-                title: Text('خبرخوان تلگرام'),
-                subtitle: Text('نسخه ۱.۶.۰؛ اتصال مستقیم به تلگرام'),
+                title: Text('TelePulse'),
+                subtitle: Text('نسخه ۱.۷.۰؛ اتصال مستقیم به تلگرام'),
               ),
               const Divider(height: 1),
               ListTile(

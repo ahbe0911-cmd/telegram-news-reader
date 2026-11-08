@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_cached_pdfview/flutter_cached_pdfview.dart';
+import '../widgets/save_to_device_button.dart';
 
 class PdfViewerPage extends StatelessWidget {
   const PdfViewerPage({
@@ -26,6 +27,14 @@ class PdfViewerPage extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          SaveToDeviceButton(
+            localPath: hasLocalFile ? localPath : null,
+            url: !hasLocalFile ? url : null,
+            fileName: fileName ?? 'document.pdf',
+            mimeType: 'application/pdf',
+          ),
+        ],
       ),
       body: hasLocalFile
           ? PDF(

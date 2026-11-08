@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../widgets/save_to_device_button.dart';
 
 /// Full-screen lightbox, with native pan/zoom and one-finger swipe-down exit.
 /// Gesture tracking is passive so it never steals pinch gestures.
@@ -9,11 +10,13 @@ class ImageViewerPage extends StatefulWidget {
   const ImageViewerPage({
     required this.url,
     this.localPath,
+    this.fileName,
     super.key,
   });
 
   final String url;
   final String? localPath;
+  final String? fileName;
 
   @override
   State<ImageViewerPage> createState() => _ImageViewerPageState();
@@ -140,6 +143,13 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
                       icon: const Icon(Icons.close_rounded),
                     ),
                     const Spacer(),
+                    SaveToDeviceButton(
+                      localPath: widget.localPath,
+                      url: widget.localPath == null ? widget.url : null,
+                      fileName: widget.fileName ?? 'image.jpg',
+                      mimeType: 'image/jpeg',
+                      foregroundColor: Colors.white,
+                    ),
                     Text(
                       'برای بزرگ‌نمایی از دو انگشت استفاده کنید',
                       style: TextStyle(

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../widgets/save_to_device_button.dart';
 
 import '../../../../core/formatters/persian_news_date.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -9,11 +10,12 @@ import '../../../../core/theme/app_theme.dart';
 /// Audio-only full-screen player. The controller is created lazily and is
 /// always disposed when this route closes; app backgrounding pauses playback.
 class AudioPreviewPage extends StatefulWidget {
-  const AudioPreviewPage({this.localPath, this.url, super.key})
+  const AudioPreviewPage({this.localPath, this.url, this.fileName, super.key})
       : assert(localPath != null || url != null);
 
   final String? localPath;
   final String? url;
+  final String? fileName;
 
   @override
   State<AudioPreviewPage> createState() => _AudioPreviewPageState();
@@ -83,7 +85,18 @@ class _AudioPreviewPageState extends State<AudioPreviewPage>
         .clamp(0.0, maxMs).toDouble();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('پخش صدا')),
+      appBar: AppBar(
+        title: const Text('پخش صدا'),
+        actions: [
+          SaveToDeviceButton(
+            localPath: widget.localPath,
+            url: widget.localPath == null ? widget.url : null,
+            fileName: widget.fileName ?? 'audio.mp3',
+            mimeType: widget.fileName?.endsWith('.ogg') == true
+                ? 'audio/ogg' : 'audio/mpeg',
+          ),
+        ],
+      ),
       body: Center(
         child: _error != null
             ? Padding(

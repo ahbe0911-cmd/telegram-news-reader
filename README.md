@@ -180,3 +180,47 @@ flutter build apk --release --split-per-abi
 ```
 
 Find the 64-bit APK under build/app/outputs/flutter-apk/app-arm64-v8a-release.apk.
+
+
+## TelePulse v1.7.0: Internal browser and read-only Office previews
+
+Android launcher name: TelePulse (tool/android/AndroidManifest.xml).
+Original launcher icon: blue/teal/violet paper plane and news sheet.
+Run python3 tool/generate_launcher_icons.py after flutter create.
+The generator writes legacy mipmaps, adaptive foreground/background and
+Android 13+ monochrome icons. GitHub Actions runs it automatically.
+
+All article links open in the embedded WebView by default. The browser
+offers Back, Forward, Refresh and an EXPLICIT option to open outside.
+WebView uses JavaScript, Android DOM storage and system browser caching.
+
+DOCX renders paragraphs as selectable text; XLSX shows worksheet cells in
+read-only scrollable tables. Parsing runs in a background isolate. The
+preview is limited to 16 MiB input files and 500 rows x 32 columns per
+worksheet to avoid freezing devices. Complex Office formatting, charts
+and macros are not rendered or executed; original files are unchanged.
+
+Each full-screen viewer provides Save. Images and videos go to Gallery,
+documents and audio go to Downloads/TelePulse using Android MediaStore.
+Only old Android versions may request legacy WRITE_EXTERNAL_STORAGE.
+
+### Local release commands (Linux/WSL)
+
+```bash
+git clone https://github.com/ahbe0911-cmd/telegram-news-reader.git
+cd telegram-news-reader
+flutter create --platforms=android --project-name telegram_news_reader --org com.example --no-pub .
+mkdir -p android/app/src/main
+cp tool/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+python3 -m pip install pillow
+python3 tool/generate_launcher_icons.py
+bash tool/prepare_fonts.sh
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
+flutter build apk --release --split-per-abi
+```
+
+ARM64 output: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk.
+Use your own release signing key for public store distribution.
