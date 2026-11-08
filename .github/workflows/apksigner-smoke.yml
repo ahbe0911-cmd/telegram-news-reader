@@ -1,0 +1,50 @@
+name: Verify Android apksigner invocation
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/apksigner-smoke.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Generate disposable test keystore
+        run: |
+          keytool -genkeypair -noprompt -storetype PKCS12 \
+            -keystore /tmp/test-signing.jks -storepass samplepass123 \
+            -alias test -keypass samplepass123 \
+            -keyalg RSA -keysize 2048 -validity 1000 \
+            -dname "CN=TEST, O=TelePulse"
+      - name: Download known-valid sample APK
+        run: |
+          curl --fail --location --retry 2 --silent --show-error \
+            'https://github.com/ahbe0911-cmd/telegram-news-reader/releases/download/v1.7.0/TelePulse-v1.7.0-ARM64.apk' \
+            --output /tmp/unsigned-sample.apk
+          test -s /tmp/unsigned-sample.apk
+      - name: Sign with official apksigner flags
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" version
+          "$BUILD_TOOLS/apksigner" sign \
+            --out /tmp/test-signed.apk \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --ks /tmp/test-signing.jks \
+            --ks-key-alias test \
+            --ks-pass pass:samplepass123 \
+            --key-pass pass:samplepass123 \
+            /tmp/unsigned-sample.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs /tmp/test-signed.apk
