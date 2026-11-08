@@ -149,6 +149,7 @@ jobs:
             --ks-key-alias "$(cat "$RUNNER_TEMP/telepulse-key-alias")" \\
             --ks-pass "file:$RUNNER_TEMP/telepulse-store-pass" \\
             --key-pass "file:$RUNNER_TEMP/telepulse-key-pass" \\
+            --min-sdk-version 23 \
             --v1-signing-enabled true \\
             --v2-signing-enabled true \\
             --v3-signing-enabled true \\

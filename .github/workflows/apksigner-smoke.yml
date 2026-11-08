@@ -39,6 +39,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" version
           "$BUILD_TOOLS/apksigner" sign \
             --out /tmp/test-signed.apk \
+            --min-sdk-version 23 \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
@@ -47,4 +48,7 @@ jobs:
             --ks-pass pass:samplepass123 \
             --key-pass pass:samplepass123 \
             /tmp/unsigned-sample.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs /tmp/test-signed.apk
+          "$BUILD_TOOLS/aapt" dump badging /tmp/unsigned-sample.apk | grep -E "^sdkVersion:|^targetSdkVersion:"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs /tmp/test-signed.apk | tee /tmp/signing-test-output.txt
+          grep -Fq "Verified using v1 scheme (JAR signing): true" /tmp/signing-test-output.txt
+          grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/signing-test-output.txt
