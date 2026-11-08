@@ -94,7 +94,7 @@ abstract final class AppTheme {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 3,
-        height: 76,
+        height: 66,
         indicatorColor: const Color(0xFFE9E7FF),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);

@@ -56,6 +56,16 @@ jobs:
             sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle
           fi
 
+      - name: Set up Python for launcher icon
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate branded launcher icons
+        run: |
+          python -m pip install pillow
+          python tool/generate_launcher_icons.py
+
       - name: Prepare bundled Persian font
         run: bash tool/prepare_fonts.sh
 

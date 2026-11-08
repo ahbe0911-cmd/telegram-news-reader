@@ -1,20 +1,24 @@
 import 'dart:io';
-
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/settings/app_settings.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../telegram/telegram_providers.dart';
+import '../../../media/data/media_download_service.dart';
+import '../../../media/presentation/pages/audio_preview_page.dart';
 import '../../../media/presentation/pages/image_viewer_page.dart';
+import '../../../media/presentation/pages/local_document_preview_page.dart';
 import '../../../media/presentation/pages/pdf_viewer_page.dart';
 import '../../../media/presentation/pages/video_player_page.dart';
-import '../../../media/presentation/widgets/inline_video_player.dart';
+import '../../../telegram/telegram_providers.dart';
+import '../../../web/presentation/pages/in_app_browser_page.dart';
 import '../../domain/entities/post.dart';
+import 'news_link_text.dart';
 
-class PostCard extends StatelessWidget {
+class PostCard extends StatefulWidget {
   const PostCard({
     required this.post,
     required this.isBookmarked,
@@ -24,517 +28,389 @@ class PostCard extends StatelessWidget {
     this.localMediaPaths = const {},
     super.key,
   });
-
   final Post post;
   final bool isBookmarked;
   final VoidCallback? onBookmark;
   final VoidCallback? onDownload;
   final double? downloadProgress;
   final Map<String, String> localMediaPaths;
+  @override
+  State<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<PostCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final copy = _editorialCopy(post);
-    final images = post.attachments
-        .where((a) => a.type == PostAttachmentType.image).toList(growable: false);
-    final hero = images.isNotEmpty ? images.first : null;
-    final otherMedia = post.attachments.where((a) =>
-        a != hero &&
-        (a.type != PostAttachmentType.video || a.telegramFileId != null)
-    ).toList(growable: false);
-    final streamingVideos = post.attachments.where((a) =>
-        a.type == PostAttachmentType.video && a.telegramFileId == null
-    ).toList(growable: false);
+    return AnimatedBuilder(
+      animation: AppSettings.instance,
+      builder: (context, _) => _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
+    final settings = AppSettings.instance;
+    final post = widget.post;
+    final title = post.title.trim().isNotEmpty ? post.title.trim() : _firstLine(post.content);
+    final body = post.title.trim().isNotEmpty
+        ? post.content.trim()
+        : post.content.trim().substring(title.length).trim();
+    final images = post.attachments.where((a) => a.type == PostAttachmentType.image).toList();
+    final hero = images.isNotEmpty && settings.showImages ? images.first : null;
+    final remaining = post.attachments.where((a) => a != hero).toList();
+    final p = settings.compactCards ? 12.0 : 17.0;
 
     return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 15),
-            child: Row(
-              children: [
+      elevation: settings.compactCards ? 2 : 3,
+      child: InkWell(
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(p, p, p, 8),
+              child: Row(children: [
                 Container(
-                  width: 43,
-                  height: 43,
+                  width: 34, height: 34,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [AppPalette.primary, AppPalette.violet],
-                    ),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: const Icon(Icons.campaign_rounded, color: Colors.white, size: 22),
+                      colors: [AppPalette.primary, AppPalette.violet]),
+                    borderRadius: BorderRadius.circular(11)),
+                  child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 18),
                 ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        post.channelTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.ui.copyWith(fontSize: 15, fontWeight: FontWeight.w800),
-                      ),
-                      Text(
-                        post.channelUsername.startsWith('chat_')
-                            ? 'کانال خصوصی' : '@${post.channelUsername}',
-                        textDirection: post.channelUsername.startsWith('chat_')
-                            ? TextDirection.rtl : TextDirection.ltr,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.secondary,
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(width: 8),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(post.channelTitle, maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.ui.copyWith(fontWeight: FontWeight.w800, fontSize: 13)),
+                    Text(post.channelUsername.startsWith('chat_')
+                        ? 'کانال خصوصی' : '@${post.channelUsername}',
+                      textDirection: post.channelUsername.startsWith('chat_')
+                        ? TextDirection.rtl : TextDirection.ltr,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: AppTypography.secondary.copyWith(fontSize: 12)),
+                  ])),
                 if (post.publishedAt != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0F3FF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _relativeDate(post.publishedAt!),
-                      style: AppTypography.secondary.copyWith(fontSize: 14),
-                    ),
-                  ),
-              ],
+                  Text(_relativeDate(post.publishedAt!),
+                    style: AppTypography.secondary.copyWith(fontSize: 12)),
+              ]),
             ),
-          ),
-          if (copy.title.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: Text(copy.title, style: AppTypography.newsHeadline),
-            ),
-          if (hero != null)
-            _AttachmentPreview(
-              key: ValueKey(hero.url),
-              attachment: hero,
-              localPath: localMediaPaths[hero.url],
-              hero: true,
-            ),
-          if (copy.body.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 17, 20, 8),
-              child: SelectableText(
-                copy.body,
-                textAlign: TextAlign.start,
-                style: AppTypography.newsBody,
-              ),
-            ),
-          if (otherMedia.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-              child: Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final a in otherMedia)
-                    SizedBox(
-                      width: 148,
-                      child: _AttachmentPreview(
-                        key: ValueKey(a.url),
-                        attachment: a,
-                        localPath: localMediaPaths[a.url],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          for (final a in streamingVideos)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 6),
-              child: InlineVideoPlayer(
-                url: a.url,
-                localPath: localMediaPaths[a.url],
-                thumbnailUrl: a.thumbnailUrl,
-              ),
-            ),
-          const SizedBox(height: 13),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18),
-            child: Divider(),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 5, 10, 8),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: isBookmarked ? 'حذف از ذخیره‌شده‌ها' : 'ذخیره پست',
-                  onPressed: onBookmark,
-                  icon: Icon(
-                    isBookmarked
-                        ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                    color: isBookmarked ? AppPalette.coral : AppPalette.muted,
-                  ),
+            if (title.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(p, 0, p, hero == null && body.isEmpty ? 4 : 7),
+                child: NewsLinkText(
+                  text: title,
+                  style: AppTypography.newsHeadline.copyWith(
+                    fontSize: 18 * settings.newsTextScale, height: 1.35),
+                  maxLines: _expanded ? null : 2,
+                  overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
                 ),
-                if (onDownload != null)
-                  Flexible(
-                    child: TextButton.icon(
-                      onPressed: onDownload,
-                      icon: const Icon(Icons.download_rounded, size: 17),
-                      label: const Text('دانلود رسانه‌ها', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            if (hero != null)
+              _MediaTile(
+                key: ValueKey(hero.url),
+                attachment: hero,
+                hero: true,
+                localPath: widget.localMediaPaths[hero.url],
+              ),
+            if (body.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(p, 7, p, 7),
+                child: NewsLinkText(
+                  text: body,
+                  style: AppTypography.newsBody.copyWith(
+                    fontSize: 17 * settings.newsTextScale,
+                    height: 1.45),
+                  maxLines: _expanded ? null : 3,
+                  overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                ),
+              ),
+            if (remaining.isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(p, 4, p, 5),
+                child: Wrap(spacing: 8, runSpacing: 6, children: [
+                  for (final attachment in remaining)
+                    _MediaTile(
+                      key: ValueKey(attachment.url),
+                      attachment: attachment,
+                      localPath: widget.localMediaPaths[attachment.url],
                     ),
+                ]),
+              ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(p - 4, 0, p - 4, 4),
+              child: Row(children: [
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: widget.isBookmarked ? 'حذف نشانک' : 'ذخیره خبر',
+                  onPressed: widget.onBookmark,
+                  icon: Icon(widget.isBookmarked
+                    ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    size: 22,
+                    color: widget.isBookmarked ? AppPalette.coral : AppPalette.muted),
+                ),
+                if (widget.onDownload != null)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'دانلود همه رسانه‌ها',
+                    onPressed: widget.onDownload,
+                    icon: const Icon(Icons.download_rounded, color: AppPalette.primary),
+                  ),
+                if (post.permalink != null)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'نمایش منبع در برنامه',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => InAppBrowserPage(initialUrl: post.permalink!))),
+                    icon: const Icon(Icons.link_rounded, size: 21),
                   ),
                 const Spacer(),
-                if (post.permalink != null)
-                  TextButton.icon(
-                    onPressed: () => launchUrl(
-                      Uri.parse(post.permalink!),
-                      mode: LaunchMode.externalApplication,
-                    ),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 17),
-                    label: const Text('تلگرام'),
-                  ),
-              ],
+                TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  icon: Icon(_expanded
+                    ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 20),
+                  label: Text(_expanded ? 'بستن' : 'ادامه خبر'),
+                ),
+              ]),
             ),
-          ),
-          if (downloadProgress != null) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-              child: LinearProgressIndicator(value: downloadProgress),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-              child: Text(
-                'در حال دانلود ${(downloadProgress! * 100).round()}٪',
-                style: AppTypography.secondary,
+            if (widget.downloadProgress != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(p, 0, p, 7),
+                child: LinearProgressIndicator(value: widget.downloadProgress),
               ),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  ({String title, String body}) _editorialCopy(Post post) {
-    if (post.title.trim().isNotEmpty) {
-      return (title: post.title.trim(), body: post.content);
-    }
-    final content = post.content.trim();
-    if (content.isEmpty) return (title: '', body: '');
-    int stop = content.indexOf(RegExp(r'[.!؟\n]'));
-    if (stop > 26 && stop < 140) {
-      stop += 1;
-    } else if (content.length > 105) {
-      stop = content.lastIndexOf(' ', 105);
-      if (stop < 45) stop = 105;
-    } else {
-      stop = content.length;
-    }
-    return (
-      title: content.substring(0, stop).trim(),
-      body: content.substring(stop).trim(),
-    );
+  String _firstLine(String full) {
+    final value = full.trim();
+    if (value.length <= 85) return value;
+    var stop = value.indexOf(RegExp(r'[؟.!؟\n]'));
+    if (stop < 25 || stop > 85) stop = value.lastIndexOf(' ', 85);
+    if (stop < 25) stop = 85;
+    return value.substring(0, stop).trim();
   }
 
   String _relativeDate(DateTime date) {
-    final difference = DateTime.now().difference(date.toLocal());
-    if (difference.inMinutes < 1) return 'همین حالا';
-    if (difference.inHours < 1) return '${difference.inMinutes} دقیقه پیش';
-    if (difference.inDays < 1) return '${difference.inHours} ساعت پیش';
-    if (difference.inDays < 7) return '${difference.inDays} روز پیش';
-
+    final elapsed = DateTime.now().difference(date.toLocal());
+    if (elapsed.inMinutes < 1) return 'همین حالا';
+    if (elapsed.inHours < 1) return '${elapsed.inMinutes} دقیقه پیش';
+    if (elapsed.inDays < 1) return '${elapsed.inHours} ساعت پیش';
+    if (elapsed.inDays < 7) return '${elapsed.inDays} روز پیش';
     final local = date.toLocal();
-    return '${local.year}/${local.month.toString().padLeft(2, '0')}/${local.day.toString().padLeft(2, '0')}';
+    return '${local.year}/${local.month}/${local.day}';
   }
 }
 
-class _AttachmentPreview extends ConsumerStatefulWidget {
-  const _AttachmentPreview({
-    required this.attachment,
-    this.localPath,
-    this.hero = false,
-    super.key,
+class _MediaTile extends ConsumerStatefulWidget {
+  const _MediaTile({
+    required this.attachment, this.localPath, this.hero = false, super.key,
   });
-
   final PostAttachment attachment;
   final String? localPath;
   final bool hero;
-
   @override
-  ConsumerState<_AttachmentPreview> createState() => _AttachmentPreviewState();
+  ConsumerState<_MediaTile> createState() => _MediaTileState();
 }
 
-class _AttachmentPreviewState extends ConsumerState<_AttachmentPreview> {
-  bool _downloading = false;
-  String? _downloadError;
-  String? _resolvedPath;
-  bool _previewLoading = false;
+class _MediaTileState extends ConsumerState<_MediaTile> {
+  String? _cachedPath;
+  bool _busy = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    if (widget.attachment.type == PostAttachmentType.image &&
-        widget.attachment.telegramFileId != null &&
-        widget.localPath == null) {
+    if (widget.hero && widget.attachment.telegramFileId != null &&
+        widget.localPath == null && !AppSettings.instance.dataSaver) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _loadTelegramPreview();
+        if (mounted) _fetch(openAfter: false);
       });
     }
   }
 
-  Future<void> _loadTelegramPreview() async {
-    final id = widget.attachment.telegramFileId;
-    if (id == null || _previewLoading || _resolvedPath != null) return;
-    setState(() => _previewLoading = true);
-    try {
-      final file = await ref.read(telegramTdlibServiceProvider).downloadFile(id);
-      final local = file['local'] is Map
-          ? Map<String, dynamic>.from(file['local'] as Map)
-          : const <String, dynamic>{};
-      final path = local['path']?.toString();
-      if (path != null && path.isNotEmpty && await File(path).exists() && mounted) {
-        setState(() => _resolvedPath = path);
-      }
-    } catch (_) {
-      // The interactive attachment remains available for manual retry.
-    } finally {
-      if (mounted) setState(() => _previewLoading = false);
-    }
-  }
-
-  bool get _isPdf =>
-      widget.attachment.mimeType?.toLowerCase().contains('pdf') == true ||
-      widget.attachment.fileName?.toLowerCase().endsWith('.pdf') == true ||
-      Uri.tryParse(widget.attachment.url)?.path.toLowerCase().endsWith('.pdf') == true;
-
-  Future<void> _open() async {
-    final availablePath = widget.localPath ?? _resolvedPath;
-    if (availablePath != null) {
-      await _openLocal(availablePath);
+  Future<void> _fetch({required bool openAfter}) async {
+    if (_busy) return;
+    final existing = widget.localPath ?? _cachedPath;
+    if (existing != null && await File(existing).exists()) {
+      if (openAfter && mounted) await _preview(existing);
       return;
     }
-
-    final fileId = widget.attachment.telegramFileId;
-    if (fileId == null) {
-      await _openRemote();
-      return;
-    }
-
-    setState(() {
-      _downloading = true;
-      _downloadError = null;
-    });
-
+    if (!mounted) return;
+    setState(() { _busy = true; _error = null; });
     try {
-      final file = await ref.read(telegramTdlibServiceProvider).downloadFile(fileId);
-      final local = file['local'] is Map
-          ? Map<String, dynamic>.from(file['local'] as Map)
+      late final String path;
+      final telegramId = widget.attachment.telegramFileId;
+      if (telegramId != null) {
+        final downloaded = await ref.read(telegramTdlibServiceProvider)
+            .downloadFile(telegramId);
+        final local = downloaded['local'] is Map
+          ? Map<String, dynamic>.from(downloaded['local'] as Map)
           : const <String, dynamic>{};
-      final path = local['path']?.toString();
-      if (path == null || path.isEmpty || !await File(path).exists()) {
-        throw StateError('فایل از تلگرام دریافت نشد یا مسیر محلی آن خالی است.');
+        path = local['path']?.toString() ?? '';
+        if (path.isEmpty || !await File(path).exists()) {
+          throw const FileSystemException('دانلود از تلگرام کامل نشد.');
+        }
+      } else {
+        path = await MediaDownloadService(dio: Dio())
+            .downloadAttachment(widget.attachment);
       }
       if (!mounted) return;
-      await _openLocal(path);
+      setState(() => _cachedPath = path);
+      if (openAfter) await _preview(path);
     } catch (error) {
-      if (mounted) setState(() => _downloadError = error.toString());
+      if (mounted) {
+        setState(() => _error = error.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('دانلود انجام نشد: $error')));
+      }
     } finally {
-      if (mounted) setState(() => _downloading = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _openLocal(String path) async {
+  Future<void> _preview(String path) async {
     final attachment = widget.attachment;
+    final isPdf = attachment.mimeType?.toLowerCase().contains('pdf') == true ||
+        attachment.fileName?.toLowerCase().endsWith('.pdf') == true;
+    late final Widget destination;
     if (attachment.type == PostAttachmentType.image) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ImageViewerPage(url: '', localPath: path),
-        ),
-      );
-      return;
+      destination = ImageViewerPage(url: '', localPath: path);
+    } else if (attachment.type == PostAttachmentType.video) {
+      destination = VideoPlayerPage(url: '', localPath: path);
+    } else if (attachment.type == PostAttachmentType.audio) {
+      destination = AudioPreviewPage(localPath: path);
+    } else if (isPdf) {
+      destination = PdfViewerPage(
+          url: '', localPath: path, fileName: attachment.fileName);
+    } else {
+      destination = LocalDocumentPreviewPage(
+          path: path, fileName: attachment.fileName);
     }
-    if (attachment.type == PostAttachmentType.video) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => VideoPlayerPage(url: '', localPath: path),
-        ),
-      );
-      return;
-    }
-    if (attachment.type == PostAttachmentType.document && _isPdf) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => PdfViewerPage(
-            url: '',
-            localPath: path,
-            fileName: attachment.fileName,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('فایل ذخیره شد: ${attachment.fileName ?? path}')),
-      );
-    }
-  }
-
-  Future<void> _openRemote() async {
-    final attachment = widget.attachment;
-    if (attachment.type == PostAttachmentType.image) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ImageViewerPage(url: attachment.url),
-        ),
-      );
-      return;
-    }
-    if (_isPdf) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => PdfViewerPage(
-            url: attachment.url,
-            fileName: attachment.fileName,
-          ),
-        ),
-      );
-      return;
-    }
-    await launchUrl(
-      Uri.parse(attachment.url),
-      mode: LaunchMode.externalApplication,
-    );
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => destination));
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     final attachment = widget.attachment;
-
-    if (attachment.type == PostAttachmentType.image) {
-      final path = widget.localPath ?? _resolvedPath;
-      return InkWell(
-        onTap: _downloading ? null : _open,
-        child: AspectRatio(
-          aspectRatio: widget.hero ? 16 / 9 : 4 / 3,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (path != null)
-                Image.file(
-                  File(path),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, error, stack) => const _ImagePlaceholder(),
-                )
+    final icon = switch (attachment.type) {
+      PostAttachmentType.image => Icons.image_rounded,
+      PostAttachmentType.video => Icons.play_circle_rounded,
+      PostAttachmentType.audio => Icons.headphones_rounded,
+      PostAttachmentType.document => Icons.description_rounded,
+      PostAttachmentType.unknown => Icons.attach_file_rounded,
+    };
+    if (widget.hero) {
+      return LayoutBuilder(builder: (context, constraints) {
+        // Strict 16:9 frame, capped at 180 logical pixels to avoid tall cards.
+        final width = constraints.maxWidth > 320 ? 320.0 : constraints.maxWidth;
+        return Center(child: SizedBox(
+          width: width, height: width * 9 / 16,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: Stack(fit: StackFit.expand, children: [
+              if ((_cachedPath ?? widget.localPath) != null)
+                Image.file(File((_cachedPath ?? widget.localPath)!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, error, stack) => const _MediaPlaceholder())
               else if (attachment.telegramFileId != null)
-                const _ImagePlaceholder()
+                const _MediaPlaceholder()
               else
                 CachedNetworkImage(
                   imageUrl: attachment.url,
                   fit: BoxFit.cover,
-                  placeholder: (context, url) => const _ImagePlaceholder(),
-                  errorWidget: (context, url, error) => const _ImagePlaceholder(),
+                  placeholder: (context, url) => const _MediaPlaceholder(),
+                  errorWidget: (context, url, error) => const _MediaPlaceholder(),
                 ),
-              if (path == null && attachment.telegramFileId != null)
-                Center(
-                  child: _previewLoading || _downloading
-                      ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4)
-                      : const Icon(Icons.image_search_rounded, color: Colors.white, size: 36),
-                ),
+              if (attachment.telegramFileId != null &&
+                  (_cachedPath ?? widget.localPath) == null)
+                Center(child: _busy
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Icon(Icons.image_outlined, color: Colors.white, size: 30)),
               PositionedDirectional(
-                bottom: 12,
-                end: 12,
-                child: Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.40),
-                    borderRadius: BorderRadius.circular(13),
+                bottom: 6, end: 8,
+                child: IconButton.filledTonal(
+                  tooltip: 'دانلود یا نمایش تصویر',
+                  onPressed: _busy ? null : () => _fetch(openAfter: true),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.white.withValues(alpha: 0.90),
+                    foregroundColor: AppPalette.primary,
                   ),
-                  child: const Icon(Icons.open_in_full_rounded, color: Colors.white, size: 17),
+                  icon: Icon((_cachedPath ?? widget.localPath) == null
+                    ? Icons.download_rounded : Icons.open_in_full_rounded, size: 21),
                 ),
               ),
-            ],
+              if (_error != null)
+                PositionedDirectional(
+                  bottom: 10, start: 8,
+                  child: Icon(Icons.error_outline_rounded, color: Colors.white)),
+            ]),
           ),
-        ),
-      );
+        ));
+      });
     }
-
-    final icon = switch (attachment.type) {
-      PostAttachmentType.image => Icons.image_outlined,
-      PostAttachmentType.video => Icons.play_circle_outline_rounded,
-      PostAttachmentType.audio => Icons.audiotrack_rounded,
-      PostAttachmentType.document => Icons.description_outlined,
-      PostAttachmentType.unknown => Icons.attach_file_rounded,
-    };
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: _downloading ? null : _open,
-      child: Container(
-        width: 142,
-        height: 82,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_downloading)
-              const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              Icon(icon, color: colors.primary, size: 24),
-            const SizedBox(height: 6),
-            Text(
-              _downloading
-                  ? 'دریافت از تلگرام…'
-                  : attachment.fileName ?? 'باز کردن پیوست',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-            if (_downloadError != null)
-              Text(
-                'خطا؛ دوباره لمس کن',
-                maxLines: 1,
-                style: TextStyle(
-                  color: colors.error,
-                  fontSize: 10,
-                ),
-              ),
-          ],
+    return Material(
+      color: const Color(0xFFF0F3FF),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _busy ? null : () => _fetch(openAfter: true),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 240),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(9, 5, 9, 5),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, color: AppPalette.primary, size: 19),
+              const SizedBox(width: 7),
+              Flexible(child: Text(
+                attachment.fileName ?? 'فایل رسانه',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: AppTypography.ui.copyWith(fontSize: 12),
+              )),
+              const SizedBox(width: 5),
+              _busy
+                ? const SizedBox(width: 19, height: 19,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'دانلود و نمایش',
+                    onPressed: () => _fetch(openAfter: true),
+                    icon: Icon((_cachedPath ?? widget.localPath) == null
+                      ? Icons.download_rounded : Icons.visibility_rounded,
+                      color: AppPalette.primary, size: 20),
+                  ),
+            ]),
+          ),
         ),
       ),
     );
   }
 }
 
-
-class _ImagePlaceholder extends StatelessWidget {
-  const _ImagePlaceholder();
-
+class _MediaPlaceholder extends StatelessWidget {
+  const _MediaPlaceholder();
   @override
-  Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: const Color(0xFFB7C5F5),
-      highlightColor: const Color(0xFFEDEBFF),
-      child: const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-            colors: [
-              Color(0xFFA5B8F5),
-              Color(0xFFCCB8EF),
-              Color(0xFFFFD0C4),
-            ],
-          ),
-        ),
-        child: Center(
-          child: Icon(Icons.auto_awesome_rounded, size: 38, color: Colors.white),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Shimmer.fromColors(
+    baseColor: const Color(0xFFA5B6E7),
+    highlightColor: const Color(0xFFE7E8FB),
+    child: const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFB6C6FA), Color(0xFFCCB8EF), Color(0xFFFFD5C5)])),
+      child: Center(child: Icon(Icons.newspaper_rounded,
+        color: Colors.white, size: 34)),
+    ),
+  );
 }
