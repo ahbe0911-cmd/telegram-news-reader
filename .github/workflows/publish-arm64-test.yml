@@ -1,0 +1,114 @@
+name: Publish verified small ARM64 TelePulse APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish-arm64-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  slim:
+    name: Create 64-bit installation-test package
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download successfully built universal APK
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 42462981722
+          name: TelePulse-1.8.0-Universal-APK
+          github-token: ${{ github.token }}
+          path: package
+
+      - name: Reduce to ARM64 and align for modern Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          INPUT="package/build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$INPUT"
+          cp "$INPUT" TelePulse-1.8.0-ARM64-unrepacked.apk
+          zip -q -d TelePulse-1.8.0-ARM64-unrepacked.apk \
+            'lib/armeabi-v7a/*' 'lib/x86_64/*'
+          if unzip -Z1 TelePulse-1.8.0-ARM64-unrepacked.apk | grep -Eq '^lib/(armeabi-v7a|x86_64)/'; then
+            echo "::error::Unexpected non-ARM64 native libraries remain."
+            exit 1
+          fi
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 \
+            TelePulse-1.8.0-ARM64-unrepacked.apk TelePulse-1.8.0-ARM64-aligned.apk
+
+      - name: Sign with a clearly labeled temporary installation-test key
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS="$(openssl rand -hex 20)"
+          keytool -genkeypair -noprompt -storetype PKCS12 \
+            -keystore "$RUNNER_TEMP/telepulse-arm64-test.jks" \
+            -storepass "$PASS" -keypass "$PASS" -alias telepulse_install_test \
+            -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=TelePulse ARM64 Installation Test, O=TelePulse"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" sign \
+            --out TelePulse-v1.8.0-ARM64-INSTALL-TEST.apk \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --ks "$RUNNER_TEMP/telepulse-arm64-test.jks" \
+            --ks-key-alias telepulse_install_test \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            TelePulse-1.8.0-ARM64-aligned.apk
+
+      - name: Verify APK and installation compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="TelePulse-v1.8.0-ARM64-INSTALL-TEST.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee signed-info.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signed-info.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK" > zipalign-info.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-info.txt | grep -E "^package:|^sdkVersion:|^application-label:"
+          grep -Fq "versionName='1.8.0'" apk-info.txt
+          grep -Fq "application-label:'TelePulse'" apk-info.txt
+          unzip -Z1 "$APK" > entries.txt
+          grep -Fxq 'lib/arm64-v8a/libflutter.so' entries.txt
+          if grep -Eq '^lib/(armeabi-v7a|x86_64)/' entries.txt; then
+            echo "::error::Wrong architectures detected"
+            exit 1
+          fi
+          sha256sum "$APK" | tee apk-sha256.txt
+          ls -lh "$APK"
+
+      - name: Upload verified files
+        uses: actions/upload-artifact@v4
+        with:
+          name: TelePulse-1.8.0-Slim-ARM64
+          path: |
+            TelePulse-v1.8.0-ARM64-INSTALL-TEST.apk
+            apk-sha256.txt
+            signed-info.txt
+            apk-info.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish direct GitHub download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v1.8.0-arm64-install-test"
+          FILE="TelePulse-v1.8.0-ARM64-INSTALL-TEST.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" \
+              --target "$GITHUB_SHA" --prerelease \
+              --title "TelePulse 1.8.0 ARM64 - installation test" \
+              --notes "Verified slim ARM64 APK. Installation-test signing key. Uninstall any prior TelePulse or Telegram News Reader APK with package com.example.telegram_news_reader before installing, because previous versions use different signing certificates. Uninstalling can erase local app data. This is not a production update-compatible certificate."
+          fi
