@@ -15,7 +15,7 @@ MARKER = "// TELEPULSE_RELEASE_SIGNING_V1"
 
 HEADER = r'''
 // TELEPULSE_RELEASE_SIGNING_V1: persistent signing key; never debug fallback.
-val telePulseSigningProperties = java.util.Properties()
+val telePulseSigningProperties = Properties()
 val telePulseSigningFile = rootProject.file("key.properties")
 if (telePulseSigningFile.exists()) {
     telePulseSigningFile.inputStream().use {
@@ -62,7 +62,8 @@ def configure(file: Path) -> None:
         return
     if "android {" not in text or "    buildTypes {" not in text:
         raise RuntimeError(f"Unexpected Gradle Kotlin structure: {file}")
-    # Kotlin DSL requires plugins { } before ordinary script declarations.
+    # Kotlin DSL permits imports above plugins {} but not ordinary declarations.
+    text = "import java.util.Properties\n\n" + text
     text = text.replace("android {", HEADER + "\nandroid {", 1)
     text = text.replace("    buildTypes {", SIGNING + "    buildTypes {", 1)
     pattern = r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)'
