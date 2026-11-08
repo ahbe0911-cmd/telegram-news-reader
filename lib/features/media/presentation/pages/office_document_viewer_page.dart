@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:xml/xml.dart';
@@ -284,7 +284,7 @@ Future<Map<String, List<List<String>>>> decodeXlsxForPreview(String path) async 
 String _valueToString(CellValue? cell) {
   return switch (cell) {
     null => '',
-    TextCellValue() => cell.value,
+    TextCellValue() => '${cell.value}',
     IntCellValue() => '${cell.value}',
     DoubleCellValue() => '${cell.value}',
     BoolCellValue() => cell.value ? 'TRUE' : 'FALSE',
