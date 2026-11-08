@@ -30,7 +30,18 @@ class _FeedPageState extends ConsumerState<FeedPage> {
   String? _loadMoreError;
 
   @override
+  void initState() {
+    super.initState();
+    AppSettings.instance.addListener(_handleSettingsChange);
+  }
+
+  void _handleSettingsChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    AppSettings.instance.removeListener(_handleSettingsChange);
     _searchController.dispose();
     super.dispose();
   }
