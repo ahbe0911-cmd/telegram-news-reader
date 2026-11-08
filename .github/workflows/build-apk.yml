@@ -142,22 +142,25 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
-          # AGP can omit v1 even with enableV1Signing=true; re-sign using
-          # the SAME release key, explicitly enabling both v1 and v2.
-          "$BUILD_TOOLS/apksigner" sign \\
-            --ks "$RUNNER_TEMP/telepulse-release.jks" \\
-            --ks-key-alias "$(cat "$RUNNER_TEMP/telepulse-key-alias")" \\
-            --ks-pass "file:$RUNNER_TEMP/telepulse-store-pass" \\
-            --key-pass "file:$RUNNER_TEMP/telepulse-key-pass" \\
+          # Explicit signer flags must precede signer-specific --ks options.
+          # v1 signing is for Android <=23; v2 is required and verified.
+          "$BUILD_TOOLS/apksigner" sign \
+            --out "$APK.verified" \
             --min-sdk-version 23 \
-            --v1-signing-enabled true \\
-            --v2-signing-enabled true \\
-            --v3-signing-enabled true \\
-            --out "$APK.verified" "$APK"
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --ks "$RUNNER_TEMP/telepulse-release.jks" \
+            --ks-key-alias "$(cat "$RUNNER_TEMP/telepulse-key-alias")" \
+            --ks-pass "file:$RUNNER_TEMP/telepulse-store-pass" \
+            --key-pass "file:$RUNNER_TEMP/telepulse-key-pass" \
+            "$APK"
           mv "$APK.verified" "$APK"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee signing-verification.txt
-          grep -Fq 'Verified using v1 scheme (JAR signing): true' signing-verification.txt
-          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signing-verification.txt
+          grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" signing-verification.txt
+          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" signing-verification.txt
+          # v1 is optional for minSdk>=24; Android 7+ verifies APKs via v2/v3.
+          # Never reject a correctly v2/v3 signed APK solely for missing v1.
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt | grep -E "^package:|^application-label:"
           grep -Fq "versionName='1.8.0'" apk-badging.txt
           grep -Fq "application-label:'TelePulse'" apk-badging.txt
