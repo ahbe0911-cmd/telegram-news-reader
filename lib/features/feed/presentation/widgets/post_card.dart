@@ -105,7 +105,7 @@ class _PostCardState extends State<PostCard> {
                   text: title,
                   style: AppTypography.newsHeadline.copyWith(
                     fontSize: 18 * settings.newsTextScale, height: 1.35),
-                  maxLines: _expanded ? null : 2,
+                  maxLines: _expanded ? null : (body.isEmpty ? 3 : 1),
                   overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
                 ),
               ),
@@ -124,7 +124,7 @@ class _PostCardState extends State<PostCard> {
                   style: AppTypography.newsBody.copyWith(
                     fontSize: 17 * settings.newsTextScale,
                     height: 1.45),
-                  maxLines: _expanded ? null : 3,
+                  maxLines: _expanded ? null : 2,
                   overflow: _expanded ? TextOverflow.clip : TextOverflow.ellipsis,
                 ),
               ),
