@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppSettings extends ChangeNotifier {
   AppSettings._();
   static final AppSettings instance = AppSettings._();
-  final SharedPreferencesAsync _prefs = SharedPreferencesAsync();
+  late final SharedPreferencesAsync _prefs = SharedPreferencesAsync();
 
   bool showImages = true;
   bool compactCards = true;

@@ -39,7 +39,7 @@ void main() {
     ));
     final texts = tester.widgetList<NewsLinkText>(find.byType(NewsLinkText)).toList();
     expect(texts.length, 2);
-    expect(texts.last.maxLines, 3);
+    expect(texts.last.maxLines, 2);
     await tester.tap(find.text('ادامه خبر'));
     await tester.pump();
     final expanded = tester.widgetList<NewsLinkText>(find.byType(NewsLinkText)).toList();
