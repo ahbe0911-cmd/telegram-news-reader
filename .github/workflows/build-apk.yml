@@ -115,6 +115,11 @@ jobs:
           path.write_text(''.join(f'{k}={escaped(v)}\n' for k,v in props.items()),encoding='utf-8')
           path.chmod(0o600)
           PY
+          # Keep credentials in runner-private files for the final apksigner pass.
+          printf '%s' "$RELEASE_KEY_PASSWORD" > "$RUNNER_TEMP/telepulse-store-pass"
+          printf '%s' "$RELEASE_KEY_ENTRY_PASSWORD" > "$RUNNER_TEMP/telepulse-key-pass"
+          printf '%s' "$RELEASE_KEY_ALIAS" > "$RUNNER_TEMP/telepulse-key-alias"
+          chmod 600 "$RUNNER_TEMP"/telepulse-*-pass "$RUNNER_TEMP/telepulse-key-alias"
           echo "TELEPULSE_SIGNING_MODE=$SIGNING_MODE" >> "$GITHUB_ENV"
 
       - name: Generate Isar and Riverpod code
@@ -137,6 +142,18 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -n 1)"
+          # AGP can omit v1 even with enableV1Signing=true; re-sign using
+          # the SAME release key, explicitly enabling both v1 and v2.
+          "$BUILD_TOOLS/apksigner" sign \\
+            --ks "$RUNNER_TEMP/telepulse-release.jks" \\
+            --ks-key-alias "$(cat "$RUNNER_TEMP/telepulse-key-alias")" \\
+            --ks-pass "file:$RUNNER_TEMP/telepulse-store-pass" \\
+            --key-pass "file:$RUNNER_TEMP/telepulse-key-pass" \\
+            --v1-signing-enabled true \\
+            --v2-signing-enabled true \\
+            --v3-signing-enabled true \\
+            --out "$APK.verified" "$APK"
+          mv "$APK.verified" "$APK"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee signing-verification.txt
           grep -Fq 'Verified using v1 scheme (JAR signing): true' signing-verification.txt
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' signing-verification.txt
