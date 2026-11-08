@@ -98,7 +98,9 @@ class _FeedPageState extends ConsumerState<FeedPage>
 
   void _onTelegramChatChanged(int chatId) {
     if (!mounted || !_foreground || !widget.isActive ||
-        !_enabledChatIds.contains(chatId)) return;
+        !_enabledChatIds.contains(chatId)) {
+      return;
+    }
     _updateDebounce?.cancel();
     _updateDebounce = Timer(
       const Duration(milliseconds: 1200),
@@ -139,7 +141,7 @@ class _FeedPageState extends ConsumerState<FeedPage>
       _loadMoreError = null;
     });
     try {
-      await ref.refresh(feedPageProvider().future);
+      await ref.refresh(feedPageProvider().future).then((_) {});
     } catch (_) {
       // The provider exposes the source errors to the feed/error UI.
     } finally {
