@@ -1,0 +1,54 @@
+name: Publish TelePulse v1.7.0 Direct APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-telepulse-v1.7.0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish downloadable GitHub release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the verified successful v1.7.0 build
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 42458571953
+          name: telegram-news-reader-apks
+          github-token: ${{ github.token }}
+          path: package
+
+      - name: Prepare direct-download filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s package/app-arm64-v8a-release.apk
+          cp package/app-arm64-v8a-release.apk TelePulse-v1.7.0-ARM64.apk
+          if [ -f package/app-armeabi-v7a-release.apk ]; then
+            cp package/app-armeabi-v7a-release.apk TelePulse-v1.7.0-ARMv7.apk
+          fi
+          sha256sum TelePulse-v1.7.0-*.apk
+
+      - name: Publish persistent public download links
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.7.0 >/dev/null 2>&1; then
+            gh release upload v1.7.0 TelePulse-v1.7.0-*.apk --clobber
+          else
+            gh release create v1.7.0 TelePulse-v1.7.0-*.apk \
+              --target "${{ github.sha }}" \
+              --title "TelePulse v1.7.0 for Android" \
+              --notes "Official TelePulse v1.7.0 Android APKs built and tested by GitHub Actions. For most modern Android phones, download TelePulse-v1.7.0-ARM64.apk."
+          fi
